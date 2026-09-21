@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>ニコニコ コメントフィルター — 詳細設定</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <h1>詳細設定</h1>
+
+    <section>
+      <h2>基本</h2>
+      <label><input id="enabled" type="checkbox" /> フィルターを有効</label>
+      <label><input id="debug" type="checkbox" /> デバッグ表示</label>
+      <label><input id="lengthEnabled" type="checkbox" /> 長文NG</label>
+      <label>文字数しきい値 <input id="maxLength" type="number" min="1" /></label>
+    </section>
+
+    <section>
+      <h2>NGワード</h2>
+      <form id="keyword-form">
+        <input id="keyword-value" placeholder="ワード" required />
+        <select id="keyword-mode">
+          <option value="contains">部分一致</option>
+          <option value="exact">完全一致</option>
+          <option value="regex">正規表現</option>
+        </select>
+        <button type="submit">追加</button>
+      </form>
+      <p id="keyword-error" class="error" hidden></p>
+      <table>
+        <thead>
+          <tr>
+            <th>有効</th>
+            <th>ワード</th>
+            <th>方式</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="keyword-rows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>NGユーザー</h2>
+      <form id="user-form">
+        <input id="user-value" placeholder="ユーザーID" required />
+        <button type="submit">追加</button>
+      </form>
+      <div id="user-rows"></div>
+    </section>
+
+    <section>
+      <h2>ホワイトリスト</h2>
+      <form id="allow-form">
+        <input id="allow-value" placeholder="ユーザーID" required />
+        <button type="submit">追加</button>
+      </form>
+      <div id="allow-rows"></div>
+    </section>
+
+    <section>
+      <h2>正規表現（高度）</h2>
+      <form id="regex-form">
+        <input id="regex-value" placeholder="パターン" required />
+        <input id="regex-memo" placeholder="説明メモ" />
+        <button type="submit">追加</button>
+      </form>
+      <p id="regex-error" class="error" hidden></p>
+      <div id="regex-rows"></div>
+    </section>
+
+    <section>
+      <h2>プリセット</h2>
+      <label><input id="preset-repeat" type="checkbox" /> 同一文字の大量連打</label>
+      <label><input id="preset-url" type="checkbox" /> URLを含むコメント</label>
+      <label><input id="preset-aa" type="checkbox" /> 簡易AA</label>
+    </section>
+
+    <section>
+      <h2>バックアップ</h2>
+      <button id="export" type="button">JSONエクスポート</button>
+      <label>JSONインポート（全置換）<input id="import" type="file" accept="application/json,.json" /></label>
+      <p id="import-error" class="error" hidden></p>
+    </section>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

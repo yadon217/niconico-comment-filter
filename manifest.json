@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "ニコニコ コメントフィルター",
+  "version": "0.1.0",
+  "description": "ニコニコ動画のコメントをローカルルールで非表示にする個人向け拡張",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "ニコニコ コメントフィルター",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.nicovideo.jp/*",
+    "https://nvcomment.nicovideo.jp/*",
+    "https://public.nvcomment.nicovideo.jp/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.nicovideo.jp/watch/*"],
+      "js": ["src/content/page-hook.js"],
+      "type": "module",
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.nicovideo.jp/watch/*"],
+      "js": ["src/content/index.js"],
+      "css": ["src/content/content.css"],
+      "type": "module",
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/shared/*.js",
+        "src/content/page-hook.js"
+      ],
+      "matches": ["https://www.nicovideo.jp/*"]
+    }
+  ]
+}
