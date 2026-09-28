@@ -5,7 +5,7 @@ import { COMMENT_API_HOSTS } from "../src/shared/constants.js";
 function isCommentApi(url) {
   try {
     const parsed = new URL(url, "https://www.nicovideo.jp");
-    return COMMENT_API_HOSTS.includes(parsed.host) && parsed.pathname.includes("/v1/threads");
+    return COMMENT_API_HOSTS.includes(parsed.host) && parsed.pathname.startsWith("/v1/");
   } catch {
     return false;
   }

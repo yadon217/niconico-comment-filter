@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BODY_USER_INDEX_AMBIGUOUS,
+  buildListIndexBodyMaps,
   collectCommentIndexEntries,
   mergeBodyUserIndex,
   mergeCommentIndex,
@@ -77,6 +78,29 @@ describe("comment-user-index", () => {
     };
     const listMap = new Map([["2", "user-at-2"]]);
     expect(resolveUserIdForRow(rowList, new Map(), new Map(), "w", listMap)).toBe("user-at-2");
+  });
+
+  it("prefers list order that matches row body (desc UI vs asc API)", () => {
+    const entries = collectCommentIndexEntries({
+      data: {
+        threads: [
+          {
+            comments: [
+              { id: "1", body: "old", userId: "u-old" },
+              { id: "2", body: "w", userId: "u-w" },
+            ],
+          },
+        ],
+      },
+    });
+    const { asc, desc } = buildListIndexBodyMaps(entries);
+    const row = {
+      getAttribute(name) {
+        if (name === "data-index") return "0";
+        return null;
+      },
+    };
+    expect(resolveUserIdForRow(row, new Map(), new Map(), "w", new Map(), asc, desc)).toBe("u-w");
   });
 
   it("uses list thread only for data-index mapping when multiple threads exist", () => {

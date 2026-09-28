@@ -26,7 +26,8 @@
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
     COMMENT_INDEX: "ncf-comment-index",
-    CONTEXT_NG: "ncf-context-ng"
+    CONTEXT_NG: "ncf-context-ng",
+    DEBUG_LOG: "ncf-debug-log"
   });
   var SOURCE = "niconico-comment-filter";
   var COMMENT_API_HOSTS = Object.freeze([

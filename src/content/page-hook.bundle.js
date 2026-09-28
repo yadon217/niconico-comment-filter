@@ -26,7 +26,8 @@
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
     COMMENT_INDEX: "ncf-comment-index",
-    CONTEXT_NG: "ncf-context-ng"
+    CONTEXT_NG: "ncf-context-ng",
+    DEBUG_LOG: "ncf-debug-log"
   });
   var SOURCE = "niconico-comment-filter";
   var COMMENT_API_HOSTS = Object.freeze([
@@ -133,20 +134,34 @@
 
   // src/shared/debug-log.js
   function agentLog(location2, message, data, hypothesisId) {
-    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
-      body: JSON.stringify({
-        sessionId: "690dc9",
-        location: location2,
-        message,
-        data,
-        hypothesisId,
-        timestamp: Date.now(),
-        runId: "post-fix"
-      })
-    }).catch(() => {
-    });
+    const payload = {
+      sessionId: "690dc9",
+      location: location2,
+      message,
+      data,
+      hypothesisId,
+      timestamp: Date.now(),
+      runId: "post-fix"
+    };
+    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
+        body: JSON.stringify(payload)
+      }).catch(() => {
+      });
+      return;
+    }
+    if (typeof window !== "undefined" && typeof location2 !== "undefined") {
+      window.postMessage(
+        {
+          source: SOURCE,
+          type: MESSAGE_TYPES.DEBUG_LOG,
+          ...payload
+        },
+        location2.origin
+      );
+    }
   }
 
   // src/shared/comment-style.js
@@ -721,7 +736,7 @@
   function isCommentApi(url) {
     try {
       const parsed = new URL(url, location.href);
-      return COMMENT_API_HOSTS.includes(parsed.host) && parsed.pathname.includes("/v1/threads");
+      return COMMENT_API_HOSTS.includes(parsed.host) && parsed.pathname.startsWith("/v1/");
     } catch {
       return false;
     }

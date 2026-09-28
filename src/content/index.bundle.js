@@ -26,7 +26,8 @@
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
     COMMENT_INDEX: "ncf-comment-index",
-    CONTEXT_NG: "ncf-context-ng"
+    CONTEXT_NG: "ncf-context-ng",
+    DEBUG_LOG: "ncf-debug-log"
   });
   var SOURCE = "niconico-comment-filter";
   var COMMENT_API_HOSTS = Object.freeze([
@@ -80,6 +81,31 @@
       map.delete(oldest);
     }
   }
+  function buildListIndexBodyMaps(entries) {
+    const byListIndex = /* @__PURE__ */ new Map();
+    for (const entry of entries) {
+      if (!entry.listIndex || !entry.userId) continue;
+      byListIndex.set(entry.listIndex, { userId: entry.userId, body: entry.body });
+    }
+    const maxIdx = [...byListIndex.keys()].reduce(
+      (max, key) => Math.max(max, Number(key) || 0),
+      -1
+    );
+    const asc = /* @__PURE__ */ new Map();
+    const desc = /* @__PURE__ */ new Map();
+    for (let i = 0; i <= maxIdx; i += 1) {
+      const key = String(i);
+      const ascEntry = byListIndex.get(key);
+      if (ascEntry) {
+        asc.set(key, { userId: ascEntry.userId, bodyNorm: normalizeText(ascEntry.body) });
+      }
+      const revEntry = byListIndex.get(String(maxIdx - i));
+      if (revEntry) {
+        desc.set(key, { userId: revEntry.userId, bodyNorm: normalizeText(revEntry.body) });
+      }
+    }
+    return { asc, desc };
+  }
   function listIndexFromRow(row) {
     if (!row) return "";
     const raw = row.getAttribute("data-index");
@@ -93,7 +119,7 @@
     if (!userId || userId === BODY_USER_INDEX_AMBIGUOUS) return "";
     return userId;
   }
-  function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexMap) {
+  function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexMap, listIndexAscMap2, listIndexDescMap2) {
     const fromDom = domUserIdFromRow(row);
     if (fromDom) return fromDom;
     const commentId = commentIdFromRow(row);
@@ -101,8 +127,20 @@
       return idMap.get(commentId) ?? "";
     }
     const listIndex = listIndexFromRow(row);
-    if (listIndex && listIndexMap?.has(listIndex)) {
-      return listIndexMap.get(listIndex) ?? "";
+    if (listIndex) {
+      const textNorm = normalizeText(commentText ?? "");
+      const ascEntry = listIndexAscMap2?.get(listIndex);
+      const descEntry = listIndexDescMap2?.get(listIndex);
+      if (textNorm) {
+        const ascOk = ascEntry?.bodyNorm === textNorm;
+        const descOk = descEntry?.bodyNorm === textNorm;
+        if (ascOk && descOk && ascEntry.userId === descEntry.userId) return ascEntry.userId;
+        if (ascOk && !descOk) return ascEntry.userId;
+        if (descOk && !ascOk) return descEntry.userId;
+      }
+      if (listIndexMap?.has(listIndex)) {
+        return listIndexMap.get(listIndex) ?? "";
+      }
     }
     return resolveUserIdFromBodyIndex(bodyMap, commentText);
   }
@@ -125,20 +163,34 @@
 
   // src/shared/debug-log.js
   function agentLog(location2, message, data, hypothesisId) {
-    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
-      body: JSON.stringify({
-        sessionId: "690dc9",
-        location: location2,
-        message,
-        data,
-        hypothesisId,
-        timestamp: Date.now(),
-        runId: "post-fix"
-      })
-    }).catch(() => {
-    });
+    const payload = {
+      sessionId: "690dc9",
+      location: location2,
+      message,
+      data,
+      hypothesisId,
+      timestamp: Date.now(),
+      runId: "post-fix"
+    };
+    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
+        body: JSON.stringify(payload)
+      }).catch(() => {
+      });
+      return;
+    }
+    if (typeof window !== "undefined" && typeof location2 !== "undefined") {
+      window.postMessage(
+        {
+          source: SOURCE,
+          type: MESSAGE_TYPES.DEBUG_LOG,
+          ...payload
+        },
+        location2.origin
+      );
+    }
   }
 
   // src/shared/shipped-defaults.json
@@ -420,7 +472,7 @@
     );
     return heading?.closest("section") ?? null;
   }
-  function commentFromListTarget(target, userIdByCommentId2, userIdByBody2, userIdByListIndex2) {
+  function commentFromListTarget(target, userIdByCommentId2, userIdByBody2, userIdByListIndex2, listIndexAscMap2, listIndexDescMap2) {
     if (!(target instanceof Element)) return null;
     const section = findCommentListSection();
     if (!section || !section.contains(target)) return null;
@@ -429,7 +481,15 @@
     const text = (row.innerText || "").trim();
     if (!text || text === "\u30B3\u30E1\u30F3\u30C8\u30EA\u30B9\u30C8") return null;
     const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
-    const userId = resolveUserIdForRow(row, userIdByCommentId2, userIdByBody2, commentText, userIdByListIndex2) || void 0;
+    const userId = resolveUserIdForRow(
+      row,
+      userIdByCommentId2,
+      userIdByBody2,
+      commentText,
+      userIdByListIndex2,
+      listIndexAscMap2,
+      listIndexDescMap2
+    ) || void 0;
     const commentId = commentIdFromRow(row) || void 0;
     const normKey = normalizeText(commentText);
     const bodySlot = userIdByBody2?.get(normKey);
@@ -584,6 +644,8 @@
   var userIdByCommentId = /* @__PURE__ */ new Map();
   var userIdByBody = /* @__PURE__ */ new Map();
   var userIdByListIndex = /* @__PURE__ */ new Map();
+  var listIndexAscMap = /* @__PURE__ */ new Map();
+  var listIndexDescMap = /* @__PURE__ */ new Map();
   function pushSettings() {
     postToPage(MESSAGE_TYPES.SETTINGS, { settings });
     renderDebug();
@@ -695,7 +757,9 @@
         userIdByCommentId,
         userIdByBody,
         commentText,
-        userIdByListIndex
+        userIdByListIndex,
+        listIndexAscMap,
+        listIndexDescMap
       );
       if (userId) resolved += 1;
       const shouldHide = Boolean(userId && blocked.has(userId));
@@ -717,7 +781,14 @@
       onNgUser: ngUser,
       onNgWord: ngWord,
       resolveComment(target) {
-        return commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex);
+        return commentFromListTarget(
+          target,
+          userIdByCommentId,
+          userIdByBody,
+          userIdByListIndex,
+          listIndexAscMap,
+          listIndexDescMap
+        );
       }
     });
     subscribeSettings((next) => {
@@ -725,10 +796,22 @@
       pushSettings();
     });
     onPageMessage((data) => {
+      if (data.type === MESSAGE_TYPES.DEBUG_LOG) {
+        agentLog(
+          String(data.location ?? ""),
+          String(data.message ?? ""),
+          data.data && typeof data.data === "object" ? data.data : {},
+          String(data.hypothesisId ?? "")
+        );
+        return;
+      }
       if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
         mergeCommentIndex(userIdByCommentId, data.entries);
         mergeBodyUserIndex(userIdByBody, data.entries);
         mergeListIndexMap(userIdByListIndex, data.entries);
+        const bodyMaps = buildListIndexBodyMaps(data.entries);
+        listIndexAscMap = bodyMaps.asc;
+        listIndexDescMap = bodyMaps.desc;
         agentLog(
           "index.js:COMMENT_INDEX",
           "merged comment index",
@@ -766,6 +849,8 @@
       userIdByCommentId.clear();
       userIdByBody.clear();
       userIdByListIndex.clear();
+      listIndexAscMap = /* @__PURE__ */ new Map();
+      listIndexDescMap = /* @__PURE__ */ new Map();
       pushSettings();
       reportStats();
     });

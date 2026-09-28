@@ -1,5 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
-import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap, resolveUserIdForRow } from "../shared/comment-user-index.js";
+import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap, buildListIndexBodyMaps, resolveUserIdForRow } from "../shared/comment-user-index.js";
 import { countNvCommentUserIdInPayload } from "../shared/nvcomment-user.js";
 import { agentLog } from "../shared/debug-log.js";
 import { reasonLabel } from "../shared/filter-engine.js";
@@ -22,6 +22,10 @@ let adapterStatus = { hook: false, message: "" };
 const userIdByCommentId = new Map();
 const userIdByBody = new Map();
 const userIdByListIndex = new Map();
+/** @type {Map<string, { userId: string, bodyNorm: string }>} */
+let listIndexAscMap = new Map();
+/** @type {Map<string, { userId: string, bodyNorm: string }>} */
+let listIndexDescMap = new Map();
 
 function pushSettings() {
   postToPage(MESSAGE_TYPES.SETTINGS, { settings });
@@ -146,6 +150,8 @@ function syncCommentListVisibility() {
       userIdByBody,
       commentText,
       userIdByListIndex,
+      listIndexAscMap,
+      listIndexDescMap,
     );
     if (userId) resolved += 1;
     const shouldHide = Boolean(userId && blocked.has(userId));
@@ -168,7 +174,14 @@ async function boot() {
     onNgUser: ngUser,
     onNgWord: ngWord,
     resolveComment(target) {
-      return commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex);
+      return commentFromListTarget(
+        target,
+        userIdByCommentId,
+        userIdByBody,
+        userIdByListIndex,
+        listIndexAscMap,
+        listIndexDescMap,
+      );
     },
   });
   subscribeSettings((next) => {
@@ -176,10 +189,22 @@ async function boot() {
     pushSettings();
   });
   onPageMessage((data) => {
+    if (data.type === MESSAGE_TYPES.DEBUG_LOG) {
+      agentLog(
+        String(data.location ?? ""),
+        String(data.message ?? ""),
+        data.data && typeof data.data === "object" ? data.data : {},
+        String(data.hypothesisId ?? ""),
+      );
+      return;
+    }
     if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
       mergeCommentIndex(userIdByCommentId, data.entries);
       mergeBodyUserIndex(userIdByBody, data.entries);
       mergeListIndexMap(userIdByListIndex, data.entries);
+      const bodyMaps = buildListIndexBodyMaps(data.entries);
+      listIndexAscMap = bodyMaps.asc;
+      listIndexDescMap = bodyMaps.desc;
       agentLog(
         "index.js:COMMENT_INDEX",
         "merged comment index",
@@ -217,6 +242,8 @@ async function boot() {
     userIdByCommentId.clear();
     userIdByBody.clear();
     userIdByListIndex.clear();
+    listIndexAscMap = new Map();
+    listIndexDescMap = new Map();
     pushSettings();
     reportStats();
   });

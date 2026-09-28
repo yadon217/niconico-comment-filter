@@ -110,6 +110,39 @@ export function mergeListIndexMap(map, entries, maxSize = 20_000) {
 }
 
 /**
+ * Build data-index → userId maps for API ascending vs reversed list order.
+ * @param {CommentIndexEntry[]} entries
+ */
+export function buildListIndexBodyMaps(entries) {
+  /** @type {Map<string, { userId: string, body: string }>} */
+  const byListIndex = new Map();
+  for (const entry of entries) {
+    if (!entry.listIndex || !entry.userId) continue;
+    byListIndex.set(entry.listIndex, { userId: entry.userId, body: entry.body });
+  }
+  const maxIdx = [...byListIndex.keys()].reduce(
+    (max, key) => Math.max(max, Number(key) || 0),
+    -1,
+  );
+  /** @type {Map<string, { userId: string, bodyNorm: string }>} */
+  const asc = new Map();
+  /** @type {Map<string, { userId: string, bodyNorm: string }>} */
+  const desc = new Map();
+  for (let i = 0; i <= maxIdx; i += 1) {
+    const key = String(i);
+    const ascEntry = byListIndex.get(key);
+    if (ascEntry) {
+      asc.set(key, { userId: ascEntry.userId, bodyNorm: normalizeText(ascEntry.body) });
+    }
+    const revEntry = byListIndex.get(String(maxIdx - i));
+    if (revEntry) {
+      desc.set(key, { userId: revEntry.userId, bodyNorm: normalizeText(revEntry.body) });
+    }
+  }
+  return { asc, desc };
+}
+
+/**
  * @param {Element | null | undefined} row
  */
 export function listIndexFromRow(row) {
@@ -137,8 +170,18 @@ export function resolveUserIdFromBodyIndex(bodyMap, commentText) {
  * @param {Map<string, string> | undefined} bodyMap normalized body -> userId
  * @param {string | undefined} commentText
  * @param {Map<string, string> | undefined} listIndexMap data-index -> userId
+ * @param {Map<string, { userId: string, bodyNorm: string }> | undefined} listIndexAscMap
+ * @param {Map<string, { userId: string, bodyNorm: string }> | undefined} listIndexDescMap
  */
-export function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexMap) {
+export function resolveUserIdForRow(
+  row,
+  idMap,
+  bodyMap,
+  commentText,
+  listIndexMap,
+  listIndexAscMap,
+  listIndexDescMap,
+) {
   const fromDom = domUserIdFromRow(row);
   if (fromDom) return fromDom;
   const commentId = commentIdFromRow(row);
@@ -146,8 +189,20 @@ export function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexM
     return idMap.get(commentId) ?? "";
   }
   const listIndex = listIndexFromRow(row);
-  if (listIndex && listIndexMap?.has(listIndex)) {
-    return listIndexMap.get(listIndex) ?? "";
+  if (listIndex) {
+    const textNorm = normalizeText(commentText ?? "");
+    const ascEntry = listIndexAscMap?.get(listIndex);
+    const descEntry = listIndexDescMap?.get(listIndex);
+    if (textNorm) {
+      const ascOk = ascEntry?.bodyNorm === textNorm;
+      const descOk = descEntry?.bodyNorm === textNorm;
+      if (ascOk && descOk && ascEntry.userId === descEntry.userId) return ascEntry.userId;
+      if (ascOk && !descOk) return ascEntry.userId;
+      if (descOk && !ascOk) return descEntry.userId;
+    }
+    if (listIndexMap?.has(listIndex)) {
+      return listIndexMap.get(listIndex) ?? "";
+    }
   }
   return resolveUserIdFromBodyIndex(bodyMap, commentText);
 }

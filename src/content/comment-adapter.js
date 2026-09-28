@@ -19,7 +19,14 @@ export function findListScroller(section) {
  * @param {Element} target
  * @param {Map<string, string> | undefined} userIdByCommentId
  */
-export function commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex) {
+export function commentFromListTarget(
+  target,
+  userIdByCommentId,
+  userIdByBody,
+  userIdByListIndex,
+  listIndexAscMap,
+  listIndexDescMap,
+) {
   if (!(target instanceof Element)) return null;
   const section = findCommentListSection();
   if (!section || !section.contains(target)) return null;
@@ -29,8 +36,15 @@ export function commentFromListTarget(target, userIdByCommentId, userIdByBody, u
   if (!text || text === "コメントリスト") return null;
   const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
   const userId =
-    resolveUserIdForRow(row, userIdByCommentId, userIdByBody, commentText, userIdByListIndex) ||
-    undefined;
+    resolveUserIdForRow(
+      row,
+      userIdByCommentId,
+      userIdByBody,
+      commentText,
+      userIdByListIndex,
+      listIndexAscMap,
+      listIndexDescMap,
+    ) || undefined;
   const commentId = commentIdFromRow(row) || undefined;
   const normKey = normalizeText(commentText);
   const bodySlot = userIdByBody?.get(normKey);
