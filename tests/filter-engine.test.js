@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MATCH_MODES, REASONS } from "../src/shared/constants.js";
+import { COMBINATORS, MATCH_MODES, REASONS } from "../src/shared/constants.js";
 import { createFilterEngine, filterNvCommentPayload } from "../src/shared/filter-engine.js";
 import { codePointLength, normalizeText } from "../src/shared/normalize.js";
-import { compileRegex, defaultSettings, parseSettings } from "../src/shared/schema.js";
+import {
+  compileRegex,
+  defaultSettings,
+  defaultStyleFilter,
+  parseSettings,
+} from "../src/shared/schema.js";
 
 function settings(overrides) {
   return { ...defaultSettings(), ...overrides };
@@ -196,6 +201,66 @@ describe("schema", () => {
   });
 });
 
+describe("style filter", () => {
+  it("blocks colored comments when enabled", () => {
+    const engine = createFilterEngine(
+      settings({
+        styleFilter: {
+          enabled: true,
+          combinator: COMBINATORS.OR,
+          rules: [
+            {
+              id: "s1",
+              enabled: true,
+              combinator: COMBINATORS.OR,
+              conditions: [{ kind: "color", mode: "non_default" }],
+            },
+          ],
+        },
+      }),
+    );
+    expect(
+      engine.evaluate({
+        text: "plain",
+        style: { hasNonDefaultColor: true, size: "medium", position: "naka" },
+      }),
+    ).toMatchObject({ blocked: true, reason: REASONS.STYLE });
+    expect(
+      engine.evaluate({
+        text: "plain",
+        style: { hasNonDefaultColor: false, size: "medium", position: "naka" },
+      }).blocked,
+    ).toBe(false);
+  });
+
+  it("whitelist still bypasses style filter", () => {
+    const engine = createFilterEngine(
+      settings({
+        allowedUsers: [{ id: "a1", enabled: true, userId: "vip" }],
+        styleFilter: {
+          enabled: true,
+          combinator: COMBINATORS.OR,
+          rules: [
+            {
+              id: "s1",
+              enabled: true,
+              combinator: COMBINATORS.OR,
+              conditions: [{ kind: "position", value: "ue" }],
+            },
+          ],
+        },
+      }),
+    );
+    expect(
+      engine.evaluate({
+        text: "x",
+        userId: "vip",
+        style: { hasNonDefaultColor: false, size: "medium", position: "ue" },
+      }).blocked,
+    ).toBe(false);
+  });
+});
+
 describe("nvcomment payload", () => {
   it("removes blocked comments and keeps the rest", () => {
     const engine = createFilterEngine(
@@ -224,5 +289,50 @@ describe("nvcomment payload", () => {
     expect(payload.data.threads[0].comments[0].id).toBe("1");
     expect(blocked).toHaveLength(1);
     expect(blocked[0].result.reason).toBe(REASONS.KEYWORD);
+  });
+
+  it("filters by commands in payload", () => {
+    const engine = createFilterEngine(
+      settings({
+        styleFilter: {
+          enabled: true,
+          combinator: COMBINATORS.OR,
+          rules: [
+            {
+              id: "s1",
+              enabled: true,
+              combinator: COMBINATORS.OR,
+              conditions: [{ kind: "size", value: "big" }],
+            },
+          ],
+        },
+      }),
+    );
+    const { payload, blocked } = filterNvCommentPayload(
+      {
+        data: {
+          threads: [
+            {
+              comments: [
+                { id: "1", body: "small", commands: [] },
+                { id: "2", body: "big", commands: ["big"] },
+              ],
+            },
+          ],
+        },
+      },
+      engine,
+    );
+    expect(payload.data.threads[0].comments).toHaveLength(1);
+    expect(payload.data.threads[0].comments[0].id).toBe("1");
+    expect(blocked[0].result.reason).toBe(REASONS.STYLE);
+  });
+});
+
+describe("styleFilter schema", () => {
+  it("defaults styleFilter when missing", () => {
+    const result = parseSettings({ enabled: true });
+    expect(result.ok).toBe(true);
+    expect(result.settings.styleFilter).toEqual(defaultStyleFilter());
   });
 });

@@ -13,7 +13,12 @@
     LENGTH: "length",
     PRESET_REPEATED: "preset_repeated",
     PRESET_URL: "preset_url",
-    PRESET_AA: "preset_aa"
+    PRESET_AA: "preset_aa",
+    STYLE: "style"
+  });
+  var COMBINATORS = Object.freeze({
+    OR: "or",
+    AND: "and"
   });
   var MESSAGE_TYPES = Object.freeze({
     SETTINGS: "ncf-settings",
@@ -27,6 +32,136 @@
     "nvcomment.nicovideo.jp",
     "public.nvcomment.nicovideo.jp"
   ]);
+
+  // src/shared/comment-style.js
+  function conditionMatches(traits, condition) {
+    if (!condition?.kind) return false;
+    if (condition.kind === "color") {
+      if (condition.mode === "non_default") return traits.hasNonDefaultColor;
+      if (condition.mode === "default") return !traits.hasNonDefaultColor;
+      return false;
+    }
+    if (condition.kind === "size") {
+      const value = condition.value ?? "medium";
+      return traits.size === value;
+    }
+    if (condition.kind === "position") {
+      const value = condition.value ?? "naka";
+      return traits.position === value;
+    }
+    return false;
+  }
+  function ruleMatches(traits, rule) {
+    if (rule?.enabled === false) return false;
+    const conditions = Array.isArray(rule?.conditions) ? rule.conditions : [];
+    if (!conditions.length) return false;
+    const combinator = rule.combinator === "and" ? "and" : "or";
+    if (combinator === "and") {
+      return conditions.every((c) => conditionMatches(traits, c));
+    }
+    return conditions.some((c) => conditionMatches(traits, c));
+  }
+  function evaluateStyleFilter(traits, styleFilter) {
+    if (styleFilter?.enabled !== true) return { blocked: false };
+    const rules = (styleFilter.rules ?? []).filter((r) => r && r.enabled !== false);
+    if (!rules.length) return { blocked: false };
+    const combinator = styleFilter.combinator === "and" ? "and" : "or";
+    if (combinator === "and") {
+      const allMatch = rules.every((rule) => ruleMatches(traits, rule));
+      if (!allMatch) return { blocked: false };
+      return { blocked: true, ruleId: rules[0]?.id ?? "style" };
+    }
+    for (const rule of rules) {
+      if (ruleMatches(traits, rule)) {
+        return { blocked: true, ruleId: rule.id ?? "style" };
+      }
+    }
+    return { blocked: false };
+  }
+
+  // src/shared/nvcomment-commands.js
+  var SIZE_TOKENS = /* @__PURE__ */ new Set(["big", "small", "medium"]);
+  var POSITION_TOKENS = /* @__PURE__ */ new Set(["ue", "shita", "naka"]);
+  var DEFAULT_COLOR_TOKENS = /* @__PURE__ */ new Set(["white"]);
+  var NAMED_COLOR_TOKENS = /* @__PURE__ */ new Set([
+    "white",
+    "red",
+    "pink",
+    "orange",
+    "yellow",
+    "green",
+    "cyan",
+    "blue",
+    "purple",
+    "black",
+    "white2",
+    "red2",
+    "pink2",
+    "orange2",
+    "yellow2",
+    "green2",
+    "cyan2",
+    "blue2",
+    "purple2",
+    "black2",
+    "niconicowhite",
+    "truered",
+    "madyellow",
+    "passionorange",
+    "elementalgreen",
+    "marineblue",
+    "nobleviolet"
+  ]);
+  var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+  var LEGACY_COLOR_RE = /^\d+$/;
+  function isIgnoredToken(token) {
+    const lower = token.toLowerCase();
+    if (SIZE_TOKENS.has(lower) || POSITION_TOKENS.has(lower)) return false;
+    if (NAMED_COLOR_TOKENS.has(lower)) return false;
+    if (HEX_COLOR_RE.test(token) || LEGACY_COLOR_RE.test(token)) return false;
+    return true;
+  }
+  function isNonDefaultColorToken(token) {
+    const lower = token.toLowerCase();
+    if (HEX_COLOR_RE.test(token) || LEGACY_COLOR_RE.test(token)) return true;
+    if (!NAMED_COLOR_TOKENS.has(lower)) return false;
+    return !DEFAULT_COLOR_TOKENS.has(lower);
+  }
+  function traitsFromNvCommands(commands) {
+    let size = "medium";
+    let position = "naka";
+    let hasNonDefaultColor = false;
+    const list = Array.isArray(commands) ? commands : [];
+    for (const raw of list) {
+      if (raw == null) continue;
+      const token = String(raw).trim();
+      if (!token) continue;
+      const lower = token.toLowerCase();
+      if (SIZE_TOKENS.has(lower)) {
+        size = lower;
+        continue;
+      }
+      if (POSITION_TOKENS.has(lower)) {
+        position = lower;
+        continue;
+      }
+      if (isIgnoredToken(token)) continue;
+      if (isNonDefaultColorToken(token)) {
+        hasNonDefaultColor = true;
+      }
+    }
+    return { hasNonDefaultColor, size, position };
+  }
+
+  // src/shared/normalize.js
+  function normalizeText(value) {
+    const raw = value == null ? "" : String(value);
+    return raw.normalize("NFKC").toLocaleLowerCase("en-US").trim();
+  }
+  function codePointLength(value) {
+    const raw = value == null ? "" : String(value);
+    return Array.from(raw).length;
+  }
 
   // src/shared/shipped-defaults.json
   var shipped_defaults_default = {
@@ -64,7 +199,73 @@
         repeatedCharacters: false,
         url: false,
         asciiArt: false
-      }
+      },
+      styleFilter: defaultStyleFilter()
+    };
+  }
+  function defaultStyleFilter() {
+    return {
+      enabled: false,
+      combinator: COMBINATORS.OR,
+      rules: [
+        {
+          id: "style_default",
+          enabled: true,
+          combinator: COMBINATORS.OR,
+          conditions: []
+        }
+      ]
+    };
+  }
+  function sanitizeCombinator(value) {
+    return value === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
+  }
+  var STYLE_SIZE_VALUES = /* @__PURE__ */ new Set(["big", "small", "medium"]);
+  var STYLE_POSITION_VALUES = /* @__PURE__ */ new Set(["ue", "shita", "naka"]);
+  var STYLE_COLOR_MODES = /* @__PURE__ */ new Set(["non_default", "default"]);
+  function sanitizeStyleCondition(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const item = (
+      /** @type {Record<string, unknown>} */
+      raw
+    );
+    const kind = asString(item.kind);
+    if (kind === "color") {
+      const mode = asString(item.mode);
+      if (!STYLE_COLOR_MODES.has(mode)) return null;
+      return { kind: "color", mode };
+    }
+    if (kind === "size") {
+      const value = asString(item.value);
+      if (!STYLE_SIZE_VALUES.has(value)) return null;
+      return { kind: "size", value };
+    }
+    if (kind === "position") {
+      const value = asString(item.value);
+      if (!STYLE_POSITION_VALUES.has(value)) return null;
+      return { kind: "position", value };
+    }
+    return null;
+  }
+  function sanitizeStyleFilter(raw) {
+    const input = raw && typeof raw === "object" && !Array.isArray(raw) ? (
+      /** @type {Record<string, unknown>} */
+      raw
+    ) : {};
+    const rulesRaw = Array.isArray(input.rules) ? input.rules : [];
+    const rules = rulesRaw.length ? rulesRaw.map((rule) => {
+      const base = sanitizeRuleBase(rule, "style");
+      const conditions = Array.isArray(rule?.conditions) ? rule.conditions.map(sanitizeStyleCondition).filter(Boolean) : [];
+      return {
+        ...base,
+        combinator: sanitizeCombinator(rule?.combinator),
+        conditions
+      };
+    }) : defaultStyleFilter().rules;
+    return {
+      enabled: asBoolean(input.enabled, false),
+      combinator: sanitizeCombinator(input.combinator),
+      rules
     };
   }
   function pickShippedPreset() {
@@ -176,6 +377,7 @@
         userId: asString(rule?.userId ?? rule?.value)
       };
     }) : [];
+    settings2.styleFilter = sanitizeStyleFilter(input.styleFilter);
     return { ok: true, settings: settings2 };
   }
   function compileRegex(pattern) {
@@ -189,16 +391,6 @@
         error: error instanceof Error ? error.message : "\u4E0D\u6B63\u306A\u6B63\u898F\u8868\u73FE\u3067\u3059"
       };
     }
-  }
-
-  // src/shared/normalize.js
-  function normalizeText(value) {
-    const raw = value == null ? "" : String(value);
-    return raw.normalize("NFKC").toLocaleLowerCase("en-US").trim();
-  }
-  function codePointLength(value) {
-    const raw = value == null ? "" : String(value);
-    return Array.from(raw).length;
   }
 
   // src/shared/filter-engine.js
@@ -236,6 +428,7 @@
     }).filter(Boolean);
     const lengthFilter = settings2?.lengthFilter ?? { enabled: false, maxLength: 50 };
     const presets = settings2?.presets ?? {};
+    const styleFilter = settings2?.styleFilter ?? { enabled: false, rules: [] };
     function evaluate(comment) {
       if (!enabled) return emptyResult();
       const text = comment?.text == null ? "" : String(comment.text);
@@ -291,6 +484,11 @@
       if (presets.asciiArt && looksLikeAsciiArt(text)) {
         return blocked(REASONS.PRESET_AA, "preset_aa");
       }
+      const traits = comment?.style ?? traitsFromNvCommands([]);
+      const styleResult = evaluateStyleFilter(traits, styleFilter);
+      if (styleResult.blocked) {
+        return blocked(REASONS.STYLE, styleResult.ruleId ?? "style");
+      }
       return emptyResult();
     }
     return { evaluate, enabled };
@@ -313,7 +511,8 @@
       for (const comment of comments) {
         const result = engine2.evaluate({
           text: comment?.body ?? "",
-          userId: comment?.userId ? String(comment.userId) : void 0
+          userId: comment?.userId ? String(comment.userId) : void 0,
+          style: traitsFromNvCommands(comment?.commands)
         });
         if (result.blocked) {
           blocked2.push({
@@ -349,7 +548,8 @@
         [REASONS.LENGTH]: 0,
         [REASONS.PRESET_REPEATED]: 0,
         [REASONS.PRESET_URL]: 0,
-        [REASONS.PRESET_AA]: 0
+        [REASONS.PRESET_AA]: 0,
+        [REASONS.STYLE]: 0
       }
     };
   }

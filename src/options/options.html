@@ -71,6 +71,28 @@
     </section>
 
     <section>
+      <h2>コメント種別</h2>
+      <p class="hint">色・サイズ・位置で非表示にします（NGワード等とは別に判定）。</p>
+      <label><input id="style-enabled" type="checkbox" /> 種別フィルターを有効</label>
+      <fieldset>
+        <legend>非表示にする種別</legend>
+        <label><input id="style-color" type="checkbox" /> 色付き（デフォルトの白以外）</label>
+        <label><input id="style-big" type="checkbox" /> 大きい（big）</label>
+        <label><input id="style-small" type="checkbox" /> 小さい（small）</label>
+        <label><input id="style-ue" type="checkbox" /> 上固定（ue）</label>
+        <label><input id="style-shita" type="checkbox" /> 下固定（shita）</label>
+        <label><input id="style-naka" type="checkbox" /> 流れコメント（naka）</label>
+      </fieldset>
+      <label>
+        種別の結合（チェックした条件）
+        <select id="style-rule-combinator">
+          <option value="or">いずれか一致で非表示（OR）</option>
+          <option value="and">すべて一致で非表示（AND）</option>
+        </select>
+      </label>
+    </section>
+
+    <section>
       <h2>プリセット</h2>
       <label><input id="preset-repeat" type="checkbox" /> 同一文字の大量連打</label>
       <label><input id="preset-url" type="checkbox" /> URLを含むコメント</label>

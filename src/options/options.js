@@ -1,5 +1,5 @@
-import { MATCH_MODES } from "../shared/constants.js";
-import { createId, serializeSettings, validateRegexRule } from "../shared/schema.js";
+import { COMBINATORS, MATCH_MODES } from "../shared/constants.js";
+import { createId, defaultStyleFilter, serializeSettings, validateRegexRule } from "../shared/schema.js";
 import { loadSettings, replaceSettingsFromJson, saveSettings } from "../shared/storage.js";
 
 const els = {
@@ -17,7 +17,70 @@ const els = {
   presetUrl: document.getElementById("preset-url"),
   presetAa: document.getElementById("preset-aa"),
   importError: document.getElementById("import-error"),
+  styleEnabled: document.getElementById("style-enabled"),
+  styleColor: document.getElementById("style-color"),
+  styleBig: document.getElementById("style-big"),
+  styleSmall: document.getElementById("style-small"),
+  styleUe: document.getElementById("style-ue"),
+  styleShita: document.getElementById("style-shita"),
+  styleNaka: document.getElementById("style-naka"),
+  styleRuleCombinator: document.getElementById("style-rule-combinator"),
 };
+
+const STYLE_CHECKBOX_CONDITIONS = [
+  { el: "styleColor", condition: { kind: "color", mode: "non_default" } },
+  { el: "styleBig", condition: { kind: "size", value: "big" } },
+  { el: "styleSmall", condition: { kind: "size", value: "small" } },
+  { el: "styleUe", condition: { kind: "position", value: "ue" } },
+  { el: "styleShita", condition: { kind: "position", value: "shita" } },
+  { el: "styleNaka", condition: { kind: "position", value: "naka" } },
+];
+
+function conditionKey(condition) {
+  return `${condition.kind}:${condition.mode ?? condition.value ?? ""}`;
+}
+
+function primaryStyleRule() {
+  const rules = settings.styleFilter?.rules ?? defaultStyleFilter().rules;
+  return rules[0] ?? defaultStyleFilter().rules[0];
+}
+
+function conditionsFromCheckboxes() {
+  return STYLE_CHECKBOX_CONDITIONS.filter(({ el }) => els[el].checked).map(
+    ({ condition }) => condition,
+  );
+}
+
+function applyStyleCheckboxesFromRule(rule) {
+  const active = new Set((rule?.conditions ?? []).map((c) => conditionKey(c)));
+  for (const { el, condition } of STYLE_CHECKBOX_CONDITIONS) {
+    els[el].checked = active.has(conditionKey(condition));
+  }
+}
+
+function buildStyleFilterFromUi() {
+  const base = settings.styleFilter ?? defaultStyleFilter();
+  const rule = {
+    ...primaryStyleRule(),
+    combinator: els.styleRuleCombinator.value === COMBINATORS.AND
+      ? COMBINATORS.AND
+      : COMBINATORS.OR,
+    conditions: conditionsFromCheckboxes(),
+  };
+  return {
+    ...base,
+    enabled: els.styleEnabled.checked,
+    combinator: base.combinator ?? COMBINATORS.OR,
+    rules: [rule, ...(base.rules ?? []).slice(1)],
+  };
+}
+
+async function persistStyleFromUi() {
+  await persist({
+    ...settings,
+    styleFilter: buildStyleFilterFromUi(),
+  });
+}
 
 let settings;
 
@@ -126,6 +189,12 @@ function render() {
   els.presetRepeat.checked = settings.presets.repeatedCharacters;
   els.presetUrl.checked = settings.presets.url;
   els.presetAa.checked = settings.presets.asciiArt;
+  const style = settings.styleFilter ?? defaultStyleFilter();
+  els.styleEnabled.checked = style.enabled;
+  const styleRule = primaryStyleRule();
+  applyStyleCheckboxesFromRule(styleRule);
+  els.styleRuleCombinator.value =
+    styleRule.combinator === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
   renderKeywords();
   renderUserList(els.userRows, "blockedUsers");
   renderUserList(els.allowRows, "allowedUsers");
@@ -170,6 +239,12 @@ async function init() {
   els.presetAa.addEventListener("change", () =>
     persist({ ...settings, presets: { ...settings.presets, asciiArt: els.presetAa.checked } }),
   );
+
+  els.styleEnabled.addEventListener("change", () => persistStyleFromUi());
+  els.styleRuleCombinator.addEventListener("change", () => persistStyleFromUi());
+  for (const { el } of STYLE_CHECKBOX_CONDITIONS) {
+    els[el].addEventListener("change", () => persistStyleFromUi());
+  }
 
   addRuleForm("keyword-form", async () => {
     const value = document.getElementById("keyword-value").value.trim();

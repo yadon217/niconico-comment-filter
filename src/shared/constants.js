@@ -14,6 +14,12 @@ export const REASONS = Object.freeze({
   PRESET_REPEATED: "preset_repeated",
   PRESET_URL: "preset_url",
   PRESET_AA: "preset_aa",
+  STYLE: "style",
+});
+
+export const COMBINATORS = Object.freeze({
+  OR: "or",
+  AND: "and",
 });
 
 export const MESSAGE_TYPES = Object.freeze({

@@ -1,4 +1,4 @@
-import { MATCH_MODES, SCHEMA_VERSION } from "./constants.js";
+import { COMBINATORS, MATCH_MODES, SCHEMA_VERSION } from "./constants.js";
 import shippedDefaults from "./shipped-defaults.json" with { type: "json" };
 
 function nowIso() {
@@ -30,6 +30,79 @@ export function baseSettings() {
       url: false,
       asciiArt: false,
     },
+    styleFilter: defaultStyleFilter(),
+  };
+}
+
+export function defaultStyleFilter() {
+  return {
+    enabled: false,
+    combinator: COMBINATORS.OR,
+    rules: [
+      {
+        id: "style_default",
+        enabled: true,
+        combinator: COMBINATORS.OR,
+        conditions: [],
+      },
+    ],
+  };
+}
+
+function sanitizeCombinator(value) {
+  return value === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
+}
+
+const STYLE_SIZE_VALUES = new Set(["big", "small", "medium"]);
+const STYLE_POSITION_VALUES = new Set(["ue", "shita", "naka"]);
+const STYLE_COLOR_MODES = new Set(["non_default", "default"]);
+
+function sanitizeStyleCondition(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = /** @type {Record<string, unknown>} */ (raw);
+  const kind = asString(item.kind);
+  if (kind === "color") {
+    const mode = asString(item.mode);
+    if (!STYLE_COLOR_MODES.has(mode)) return null;
+    return { kind: "color", mode };
+  }
+  if (kind === "size") {
+    const value = asString(item.value);
+    if (!STYLE_SIZE_VALUES.has(value)) return null;
+    return { kind: "size", value };
+  }
+  if (kind === "position") {
+    const value = asString(item.value);
+    if (!STYLE_POSITION_VALUES.has(value)) return null;
+    return { kind: "position", value };
+  }
+  return null;
+}
+
+function sanitizeStyleFilter(raw) {
+  const input =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? /** @type {Record<string, unknown>} */ (raw)
+      : {};
+  const rulesRaw = Array.isArray(input.rules) ? input.rules : [];
+  const rules = rulesRaw.length
+    ? rulesRaw.map((rule) => {
+        const base = sanitizeRuleBase(rule, "style");
+        const conditions = Array.isArray(rule?.conditions)
+          ? rule.conditions.map(sanitizeStyleCondition).filter(Boolean)
+          : [];
+        return {
+          ...base,
+          combinator: sanitizeCombinator(rule?.combinator),
+          conditions,
+        };
+      })
+    : defaultStyleFilter().rules;
+
+  return {
+    enabled: asBoolean(input.enabled, false),
+    combinator: sanitizeCombinator(input.combinator),
+    rules,
   };
 }
 
@@ -165,6 +238,8 @@ export function parseSettings(raw) {
         };
       })
     : [];
+
+  settings.styleFilter = sanitizeStyleFilter(input.styleFilter);
 
   return { ok: true, settings };
 }

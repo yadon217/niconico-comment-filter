@@ -23,6 +23,19 @@ label {
   margin: 8px 0;
 }
 
+.hint {
+  margin: 0 0 12px;
+  color: #555;
+  font-size: 13px;
+}
+
+fieldset {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 8px 12px 12px;
+}
+
 form {
   display: flex;
   gap: 8px;

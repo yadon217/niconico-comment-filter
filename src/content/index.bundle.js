@@ -13,7 +13,12 @@
     LENGTH: "length",
     PRESET_REPEATED: "preset_repeated",
     PRESET_URL: "preset_url",
-    PRESET_AA: "preset_aa"
+    PRESET_AA: "preset_aa",
+    STYLE: "style"
+  });
+  var COMBINATORS = Object.freeze({
+    OR: "or",
+    AND: "and"
   });
   var MESSAGE_TYPES = Object.freeze({
     SETTINGS: "ncf-settings",
@@ -64,7 +69,73 @@
         repeatedCharacters: false,
         url: false,
         asciiArt: false
-      }
+      },
+      styleFilter: defaultStyleFilter()
+    };
+  }
+  function defaultStyleFilter() {
+    return {
+      enabled: false,
+      combinator: COMBINATORS.OR,
+      rules: [
+        {
+          id: "style_default",
+          enabled: true,
+          combinator: COMBINATORS.OR,
+          conditions: []
+        }
+      ]
+    };
+  }
+  function sanitizeCombinator(value) {
+    return value === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
+  }
+  var STYLE_SIZE_VALUES = /* @__PURE__ */ new Set(["big", "small", "medium"]);
+  var STYLE_POSITION_VALUES = /* @__PURE__ */ new Set(["ue", "shita", "naka"]);
+  var STYLE_COLOR_MODES = /* @__PURE__ */ new Set(["non_default", "default"]);
+  function sanitizeStyleCondition(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const item = (
+      /** @type {Record<string, unknown>} */
+      raw
+    );
+    const kind = asString(item.kind);
+    if (kind === "color") {
+      const mode = asString(item.mode);
+      if (!STYLE_COLOR_MODES.has(mode)) return null;
+      return { kind: "color", mode };
+    }
+    if (kind === "size") {
+      const value = asString(item.value);
+      if (!STYLE_SIZE_VALUES.has(value)) return null;
+      return { kind: "size", value };
+    }
+    if (kind === "position") {
+      const value = asString(item.value);
+      if (!STYLE_POSITION_VALUES.has(value)) return null;
+      return { kind: "position", value };
+    }
+    return null;
+  }
+  function sanitizeStyleFilter(raw) {
+    const input = raw && typeof raw === "object" && !Array.isArray(raw) ? (
+      /** @type {Record<string, unknown>} */
+      raw
+    ) : {};
+    const rulesRaw = Array.isArray(input.rules) ? input.rules : [];
+    const rules = rulesRaw.length ? rulesRaw.map((rule) => {
+      const base = sanitizeRuleBase(rule, "style");
+      const conditions = Array.isArray(rule?.conditions) ? rule.conditions.map(sanitizeStyleCondition).filter(Boolean) : [];
+      return {
+        ...base,
+        combinator: sanitizeCombinator(rule?.combinator),
+        conditions
+      };
+    }) : defaultStyleFilter().rules;
+    return {
+      enabled: asBoolean(input.enabled, false),
+      combinator: sanitizeCombinator(input.combinator),
+      rules
     };
   }
   function pickShippedPreset() {
@@ -176,6 +247,7 @@
         userId: asString(rule?.userId ?? rule?.value)
       };
     }) : [];
+    settings2.styleFilter = sanitizeStyleFilter(input.styleFilter);
     return { ok: true, settings: settings2 };
   }
 
@@ -196,6 +268,8 @@
         return "NG\uFF1A\u30D7\u30EA\u30BB\u30C3\u30C8\uFF08URL\uFF09";
       case REASONS.PRESET_AA:
         return "NG\uFF1A\u30D7\u30EA\u30BB\u30C3\u30C8\uFF08AA\uFF09";
+      case REASONS.STYLE:
+        return "NG\uFF1A\u30B3\u30E1\u30F3\u30C8\u7A2E\u5225";
       default:
         return "NG";
     }

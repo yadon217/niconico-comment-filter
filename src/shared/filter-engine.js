@@ -1,6 +1,8 @@
+import { evaluateStyleFilter } from "./comment-style.js";
 import { MATCH_MODES, REASONS } from "./constants.js";
-import { compileRegex } from "./schema.js";
+import { traitsFromNvCommands } from "./nvcomment-commands.js";
 import { codePointLength, normalizeText } from "./normalize.js";
+import { compileRegex } from "./schema.js";
 
 const URL_RE = /https?:\/\/[^\s]+/i;
 const REPEATED_RE = /^(.)\1{19,}$/u;
@@ -10,7 +12,7 @@ const REPEATED_RE = /^(.)\1{19,}$/u;
  * @property {string} text
  * @property {string} [userId]
  * @property {number} [timestamp]
- * @property {Record<string, unknown>} [metadata]
+ * @property {import("./nvcomment-commands.js").CommentStyleTraits} [style]
  */
 
 /**
@@ -67,6 +69,7 @@ export function createFilterEngine(settings) {
     .filter(Boolean);
   const lengthFilter = settings?.lengthFilter ?? { enabled: false, maxLength: 50 };
   const presets = settings?.presets ?? {};
+  const styleFilter = settings?.styleFilter ?? { enabled: false, rules: [] };
 
   /**
    * @param {Comment} comment
@@ -136,6 +139,12 @@ export function createFilterEngine(settings) {
       return blocked(REASONS.PRESET_AA, "preset_aa");
     }
 
+    const traits = comment?.style ?? traitsFromNvCommands([]);
+    const styleResult = evaluateStyleFilter(traits, styleFilter);
+    if (styleResult.blocked) {
+      return blocked(REASONS.STYLE, styleResult.ruleId ?? "style");
+    }
+
     return emptyResult();
   }
 
@@ -167,6 +176,7 @@ export function filterNvCommentPayload(payload, engine) {
       const result = engine.evaluate({
         text: comment?.body ?? "",
         userId: comment?.userId ? String(comment.userId) : undefined,
+        style: traitsFromNvCommands(comment?.commands),
       });
       if (result.blocked) {
         blocked.push({
@@ -204,6 +214,7 @@ export function emptyStats() {
       [REASONS.PRESET_REPEATED]: 0,
       [REASONS.PRESET_URL]: 0,
       [REASONS.PRESET_AA]: 0,
+      [REASONS.STYLE]: 0,
     },
   };
 }
@@ -231,6 +242,8 @@ export function reasonLabel(reason, rule) {
       return "NG：プリセット（URL）";
     case REASONS.PRESET_AA:
       return "NG：プリセット（AA）";
+    case REASONS.STYLE:
+      return "NG：コメント種別";
     default:
       return "NG";
   }
