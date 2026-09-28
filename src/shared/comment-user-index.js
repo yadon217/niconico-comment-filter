@@ -5,6 +5,24 @@ import { normalizeText } from "./normalize.js";
 export const BODY_USER_INDEX_AMBIGUOUS = "__ambiguous__";
 
 /**
+ * Thread whose comments match the on-page comment list (largest comment array).
+ * @param {unknown[]} threads
+ */
+export function pickListThread(threads) {
+  if (!threads.length) return null;
+  let best = threads[0];
+  let bestLen = Array.isArray(best?.comments) ? best.comments.length : 0;
+  for (const thread of threads) {
+    const len = Array.isArray(thread?.comments) ? thread.comments.length : 0;
+    if (len > bestLen) {
+      best = thread;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
+/**
  * @param {unknown} payload nvcomment threads JSON
  * @returns {CommentIndexEntry[]}
  */
@@ -12,11 +30,18 @@ export function collectCommentIndexEntries(payload) {
   const entries = [];
   const threads = payload?.data?.threads;
   if (!Array.isArray(threads)) return entries;
+  const listThread = pickListThread(threads);
+  const listComments = Array.isArray(listThread?.comments) ? listThread.comments : [];
+  const listIndexByCommentId = new Map();
   let listIndexCounter = 0;
+  for (const comment of listComments) {
+    const listIndex = String(listIndexCounter++);
+    if (comment?.id == null || comment?.userId == null) continue;
+    listIndexByCommentId.set(String(comment.id), listIndex);
+  }
   for (const thread of threads) {
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
     for (const comment of comments) {
-      const listIndex = String(listIndexCounter++);
       if (comment?.id == null || comment?.userId == null) continue;
       const commentId = String(comment.id);
       const userId = String(comment.userId);
@@ -25,7 +50,7 @@ export function collectCommentIndexEntries(payload) {
         commentId,
         userId,
         body: comment?.body == null ? "" : String(comment.body),
-        listIndex,
+        listIndex: listIndexByCommentId.get(commentId) ?? "",
       });
     }
   }

@@ -73,6 +73,12 @@ async function ngUser(userId) {
       { id: createId("user"), enabled: true, userId, createdAt: new Date().toISOString() },
     ],
   });
+  agentLog(
+    "index.js:ngUser",
+    "blocked user added",
+    { userIdLen: userId.length, ruleCount: settings.blockedUsers.length + 1 },
+    "F",
+  );
   return true;
 }
 

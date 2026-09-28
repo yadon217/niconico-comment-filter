@@ -45,15 +45,35 @@
   }
 
   // src/shared/comment-user-index.js
+  function pickListThread(threads) {
+    if (!threads.length) return null;
+    let best = threads[0];
+    let bestLen = Array.isArray(best?.comments) ? best.comments.length : 0;
+    for (const thread of threads) {
+      const len = Array.isArray(thread?.comments) ? thread.comments.length : 0;
+      if (len > bestLen) {
+        best = thread;
+        bestLen = len;
+      }
+    }
+    return best;
+  }
   function collectCommentIndexEntries(payload) {
     const entries = [];
     const threads = payload?.data?.threads;
     if (!Array.isArray(threads)) return entries;
+    const listThread = pickListThread(threads);
+    const listComments = Array.isArray(listThread?.comments) ? listThread.comments : [];
+    const listIndexByCommentId = /* @__PURE__ */ new Map();
     let listIndexCounter = 0;
+    for (const comment of listComments) {
+      const listIndex = String(listIndexCounter++);
+      if (comment?.id == null || comment?.userId == null) continue;
+      listIndexByCommentId.set(String(comment.id), listIndex);
+    }
     for (const thread of threads) {
       const comments = Array.isArray(thread.comments) ? thread.comments : [];
       for (const comment of comments) {
-        const listIndex = String(listIndexCounter++);
         if (comment?.id == null || comment?.userId == null) continue;
         const commentId = String(comment.id);
         const userId = String(comment.userId);
@@ -62,7 +82,7 @@
           commentId,
           userId,
           body: comment?.body == null ? "" : String(comment.body),
-          listIndex
+          listIndex: listIndexByCommentId.get(commentId) ?? ""
         });
       }
     }
@@ -609,6 +629,16 @@
   var engine = createFilterEngine(settings);
   var stats = emptyStats();
   var adapterStatus = { hook: true, message: "" };
+  var loggedCommentShape = false;
+  function threadSummary(payload) {
+    const threads = payload?.data?.threads;
+    if (!Array.isArray(threads)) return [];
+    return threads.map((thread, index) => ({
+      index,
+      commentCount: Array.isArray(thread?.comments) ? thread.comments.length : 0,
+      threadId: thread?.id != null ? String(thread.id) : ""
+    }));
+  }
   function isCommentApi(url) {
     try {
       const parsed = new URL(url, location.href);
@@ -628,17 +658,46 @@
     );
   }
   function applyFilteredPayload(payload) {
+    if (!loggedCommentShape) {
+      const first = payload?.data?.threads?.[0]?.comments?.[0];
+      if (first && typeof first === "object") {
+        loggedCommentShape = true;
+        agentLog(
+          "page-hook.js:applyFilteredPayload",
+          "sample comment keys",
+          { keys: Object.keys(first) },
+          "H"
+        );
+      }
+    }
     const indexEntries = collectCommentIndexEntries(payload);
     if (indexEntries.length) {
       agentLog(
         "page-hook.js:applyFilteredPayload",
         "post COMMENT_INDEX",
-        { entryCount: indexEntries.length },
+        { entryCount: indexEntries.length, threads: threadSummary(payload) },
         "A"
       );
       postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
     }
     const { payload: next, blocked: blocked2 } = filterNvCommentPayload(payload, engine);
+    const blockedUserRuleCount = (settings?.blockedUsers ?? []).filter(
+      (item) => item.enabled !== false && item.userId
+    ).length;
+    if (blockedUserRuleCount > 0) {
+      const userBlocks = blocked2.filter((item) => item.result.reason === REASONS.USER).length;
+      agentLog(
+        "page-hook.js:applyFilteredPayload",
+        "user filter stats",
+        {
+          userBlocks,
+          totalBlocked: blocked2.length,
+          blockedUserRuleCount,
+          engineEnabled: engine.enabled
+        },
+        "F"
+      );
+    }
     for (const item of blocked2) {
       addStat(stats, item.result.reason);
     }
@@ -658,6 +717,17 @@
       settings = data.settings;
       engine = createFilterEngine(settings);
       stats = emptyStats();
+      agentLog(
+        "page-hook.js:SETTINGS",
+        "engine rebuilt",
+        {
+          enabled: settings.enabled,
+          blockedUserRuleCount: (settings.blockedUsers ?? []).filter(
+            (item) => item.enabled !== false && item.userId
+          ).length
+        },
+        "F"
+      );
       postToIsolated(MESSAGE_TYPES.STATS, { stats });
       postToIsolated(MESSAGE_TYPES.STATUS, { status: adapterStatus });
     }

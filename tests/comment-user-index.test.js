@@ -79,6 +79,26 @@ describe("comment-user-index", () => {
     expect(resolveUserIdForRow(rowList, new Map(), new Map(), "w", listMap)).toBe("user-at-2");
   });
 
+  it("uses list thread only for data-index mapping when multiple threads exist", () => {
+    const entries = collectCommentIndexEntries({
+      data: {
+        threads: [
+          { comments: [{ id: "a", body: "x", userId: "u0" }] },
+          {
+            comments: [
+              { id: "b", body: "y", userId: "u1" },
+              { id: "c", body: "z", userId: "u2" },
+            ],
+          },
+        ],
+      },
+    });
+    const byCommentId = new Map(entries.map((entry) => [entry.commentId, entry]));
+    expect(byCommentId.get("b")?.listIndex).toBe("0");
+    expect(byCommentId.get("c")?.listIndex).toBe("1");
+    expect(byCommentId.get("a")?.listIndex).toBe("");
+  });
+
   it("marks ambiguous body keys and refuses to resolve them", () => {
     const bodyMap = new Map();
     mergeBodyUserIndex(bodyMap, [
