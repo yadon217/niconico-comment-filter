@@ -27,38 +27,8 @@ function postToIsolated(type, extra) {
   );
 }
 
-function applyFilteredPayload(payload, meta = {}) {
-  const t0 = performance.now();
-  const { payload: next, blocked, debugSummary } = filterNvCommentPayload(payload, engine);
-  const ms = Math.round(performance.now() - t0);
-  // #region agent log
-  fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-    body: JSON.stringify({
-      sessionId: "2771b2",
-      runId: meta.runId ?? "pre-fix",
-      hypothesisId: "H1-H3",
-      location: "page-hook.js:applyFilteredPayload",
-      message: "threads payload filtered",
-      data: {
-        via: meta.via ?? "unknown",
-        urlPath: meta.urlPath ?? "",
-        ms,
-        engineEnabled: engine.enabled,
-        styleFilter: settings?.styleFilter
-          ? {
-              enabled: settings.styleFilter.enabled,
-              ruleCount: settings.styleFilter.rules?.length ?? 0,
-              conditions: settings.styleFilter.rules?.[0]?.conditions ?? [],
-            }
-          : null,
-        ...debugSummary,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+function applyFilteredPayload(payload) {
+  const { payload: next, blocked } = filterNvCommentPayload(payload, engine);
   for (const item of blocked) {
     addStat(stats, item.result.reason);
   }
@@ -78,26 +48,6 @@ window.addEventListener("message", (event) => {
   if (data.type === MESSAGE_TYPES.SETTINGS && data.settings) {
     settings = data.settings;
     engine = createFilterEngine(settings);
-    // #region agent log
-    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-      body: JSON.stringify({
-        sessionId: "2771b2",
-        runId: "pre-fix",
-        hypothesisId: "H5",
-        location: "page-hook.js:SETTINGS",
-        message: "settings applied in page hook",
-        data: {
-          enabled: settings.enabled,
-          lengthFilter: settings.lengthFilter,
-          styleFilter: settings.styleFilter,
-          keywordCount: settings.keywordRules?.length ?? 0,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     stats = emptyStats();
     postToIsolated(MESSAGE_TYPES.STATS, { stats });
     postToIsolated(MESSAGE_TYPES.STATUS, { status: adapterStatus });
@@ -111,38 +61,8 @@ window.fetch = async function ncfFetch(input, init) {
   if (!isCommentApi(url) || !engine.enabled) return response;
   try {
     const payload = await response.clone().json();
-    let urlPath = "";
-    try {
-      urlPath = new URL(url, location.href).pathname;
-    } catch {
-      urlPath = String(url).slice(0, 120);
-    }
-    const next = applyFilteredPayload(payload, { via: "fetch", urlPath });
-    const bodyText = JSON.stringify(next);
-    // #region agent log
-    const origLen = response.headers.get("content-length");
-    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-      body: JSON.stringify({
-        sessionId: "2771b2",
-        runId: "pre-fix",
-        hypothesisId: "H2",
-        location: "page-hook.js:fetch",
-        message: "fetch response rewritten",
-        data: {
-          urlPath,
-          bodyBytes: bodyText.length,
-          origContentLength: origLen ? Number(origLen) : null,
-          lengthMismatch:
-            origLen != null && Number.isFinite(Number(origLen)) && Number(origLen) !== bodyText.length,
-          hadContentEncoding: response.headers.has("content-encoding"),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return new Response(bodyText, {
+    const next = applyFilteredPayload(payload);
+    return new Response(JSON.stringify(next), {
       status: response.status,
       statusText: response.statusText,
       headers: response.headers,
@@ -168,10 +88,7 @@ XMLHttpRequest.prototype.send = function ncfSend(body) {
     this.addEventListener("load", () => {
       try {
         const payload = JSON.parse(this.responseText);
-        const next = applyFilteredPayload(payload, {
-          via: "xhr",
-          urlPath: String(this.__ncfUrl ?? "").slice(0, 120),
-        });
+        const next = applyFilteredPayload(payload);
         Object.defineProperty(this, "responseText", { value: JSON.stringify(next) });
         Object.defineProperty(this, "response", { value: JSON.stringify(next) });
       } catch {

@@ -502,34 +502,19 @@
   function filterNvCommentPayload(payload, engine2) {
     const threads = payload?.data?.threads;
     if (!Array.isArray(threads)) {
-      return { payload, blocked: [], debugSummary: { totalIn: 0, totalKept: 0 } };
+      return { payload, blocked: [] };
     }
     const blocked2 = [];
-    const byReason = {};
-    let totalIn = 0;
-    let totalKept = 0;
-    const countMismatch = [];
-    const styleBlockedNotColored = [];
     const nextThreads = threads.map((thread) => {
       const comments = Array.isArray(thread.comments) ? thread.comments : [];
       const kept = [];
       for (const comment of comments) {
-        totalIn += 1;
-        const style = traitsFromNvCommands(comment?.commands);
         const result = engine2.evaluate({
           text: comment?.body ?? "",
           userId: comment?.userId ? String(comment.userId) : void 0,
-          style
+          style: traitsFromNvCommands(comment?.commands)
         });
         if (result.blocked) {
-          const reason = result.reason ?? "unknown";
-          byReason[reason] = (byReason[reason] ?? 0) + 1;
-          if (reason === REASONS.STYLE && !style.hasNonDefaultColor) {
-            styleBlockedNotColored.push({
-              commands: Array.isArray(comment?.commands) ? comment.commands.slice(0, 8) : [],
-              style
-            });
-          }
           blocked2.push({
             id: comment?.id != null ? String(comment.id) : "",
             text: comment?.body ?? "",
@@ -537,45 +522,11 @@
             result
           });
         } else {
-          totalKept += 1;
           kept.push(comment);
         }
       }
-      const declared = thread?.commentCount;
-      if (typeof declared === "number" && declared !== kept.length) {
-        countMismatch.push({
-          fork: thread?.fork,
-          declared,
-          kept: kept.length,
-          removed: comments.length - kept.length
-        });
-      }
       return { ...thread, comments: kept };
     });
-    const debugSummary = {
-      totalIn,
-      totalKept,
-      byReason,
-      countMismatch: countMismatch.slice(0, 5),
-      styleBlockedNotColoredSample: styleBlockedNotColored.slice(0, 8),
-      styleBlockedNotColoredCount: styleBlockedNotColored.length
-    };
-    if (totalIn > 0 && Object.keys(byReason).length > 0) {
-      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-        body: JSON.stringify({
-          sessionId: "2771b2",
-          runId: "pre-fix",
-          hypothesisId: "H4-H5",
-          location: "filter-engine.js:filterNvCommentPayload",
-          message: "block reason breakdown",
-          data: debugSummary,
-          timestamp: Date.now()
-        })
-      }).catch(() => {
-      });
-    }
     return {
       payload: {
         ...payload,
@@ -584,8 +535,7 @@
           threads: nextThreads
         }
       },
-      blocked: blocked2,
-      debugSummary
+      blocked: blocked2
     };
   }
   function emptyStats() {
@@ -633,35 +583,8 @@
       location.origin
     );
   }
-  function applyFilteredPayload(payload, meta = {}) {
-    const t0 = performance.now();
-    const { payload: next, blocked: blocked2, debugSummary } = filterNvCommentPayload(payload, engine);
-    const ms = Math.round(performance.now() - t0);
-    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-      body: JSON.stringify({
-        sessionId: "2771b2",
-        runId: meta.runId ?? "pre-fix",
-        hypothesisId: "H1-H3",
-        location: "page-hook.js:applyFilteredPayload",
-        message: "threads payload filtered",
-        data: {
-          via: meta.via ?? "unknown",
-          urlPath: meta.urlPath ?? "",
-          ms,
-          engineEnabled: engine.enabled,
-          styleFilter: settings?.styleFilter ? {
-            enabled: settings.styleFilter.enabled,
-            ruleCount: settings.styleFilter.rules?.length ?? 0,
-            conditions: settings.styleFilter.rules?.[0]?.conditions ?? []
-          } : null,
-          ...debugSummary
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {
-    });
+  function applyFilteredPayload(payload) {
+    const { payload: next, blocked: blocked2 } = filterNvCommentPayload(payload, engine);
     for (const item of blocked2) {
       addStat(stats, item.result.reason);
     }
@@ -680,25 +603,6 @@
     if (data.type === MESSAGE_TYPES.SETTINGS && data.settings) {
       settings = data.settings;
       engine = createFilterEngine(settings);
-      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-        body: JSON.stringify({
-          sessionId: "2771b2",
-          runId: "pre-fix",
-          hypothesisId: "H5",
-          location: "page-hook.js:SETTINGS",
-          message: "settings applied in page hook",
-          data: {
-            enabled: settings.enabled,
-            lengthFilter: settings.lengthFilter,
-            styleFilter: settings.styleFilter,
-            keywordCount: settings.keywordRules?.length ?? 0
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {
-      });
       stats = emptyStats();
       postToIsolated(MESSAGE_TYPES.STATS, { stats });
       postToIsolated(MESSAGE_TYPES.STATUS, { status: adapterStatus });
@@ -711,36 +615,8 @@
     if (!isCommentApi(url) || !engine.enabled) return response;
     try {
       const payload = await response.clone().json();
-      let urlPath = "";
-      try {
-        urlPath = new URL(url, location.href).pathname;
-      } catch {
-        urlPath = String(url).slice(0, 120);
-      }
-      const next = applyFilteredPayload(payload, { via: "fetch", urlPath });
-      const bodyText = JSON.stringify(next);
-      const origLen = response.headers.get("content-length");
-      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
-        body: JSON.stringify({
-          sessionId: "2771b2",
-          runId: "pre-fix",
-          hypothesisId: "H2",
-          location: "page-hook.js:fetch",
-          message: "fetch response rewritten",
-          data: {
-            urlPath,
-            bodyBytes: bodyText.length,
-            origContentLength: origLen ? Number(origLen) : null,
-            lengthMismatch: origLen != null && Number.isFinite(Number(origLen)) && Number(origLen) !== bodyText.length,
-            hadContentEncoding: response.headers.has("content-encoding")
-          },
-          timestamp: Date.now()
-        })
-      }).catch(() => {
-      });
-      return new Response(bodyText, {
+      const next = applyFilteredPayload(payload);
+      return new Response(JSON.stringify(next), {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers
@@ -765,10 +641,7 @@
       this.addEventListener("load", () => {
         try {
           const payload = JSON.parse(this.responseText);
-          const next = applyFilteredPayload(payload, {
-            via: "xhr",
-            urlPath: String(this.__ncfUrl ?? "").slice(0, 120)
-          });
+          const next = applyFilteredPayload(payload);
           Object.defineProperty(this, "responseText", { value: JSON.stringify(next) });
           Object.defineProperty(this, "response", { value: JSON.stringify(next) });
         } catch {
