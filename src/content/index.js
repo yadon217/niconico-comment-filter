@@ -1,5 +1,6 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
 import { mergeBodyUserIndex, mergeCommentIndex } from "../shared/comment-user-index.js";
+import { agentLog } from "../shared/debug-log.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
 import { loadSettings, saveSettings, subscribeSettings } from "../shared/storage.js";
@@ -119,6 +120,16 @@ async function boot() {
     if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
       mergeCommentIndex(userIdByCommentId, data.entries);
       mergeBodyUserIndex(userIdByBody, data.entries);
+      agentLog(
+        "index.js:COMMENT_INDEX",
+        "merged comment index",
+        {
+          entryCount: data.entries.length,
+          idMapSize: userIdByCommentId.size,
+          bodyMapSize: userIdByBody.size,
+        },
+        "A",
+      );
     }
     if (data.type === MESSAGE_TYPES.STATS && data.stats) {
       stats = data.stats;

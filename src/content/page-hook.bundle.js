@@ -66,6 +66,24 @@
     return entries;
   }
 
+  // src/shared/debug-log.js
+  function agentLog(location2, message, data, hypothesisId) {
+    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
+      body: JSON.stringify({
+        sessionId: "690dc9",
+        location: location2,
+        message,
+        data,
+        hypothesisId,
+        timestamp: Date.now(),
+        runId: "pre-fix"
+      })
+    }).catch(() => {
+    });
+  }
+
   // src/shared/comment-style.js
   function conditionMatches(traits, condition) {
     if (!condition?.kind) return false;
@@ -609,6 +627,12 @@
   function applyFilteredPayload(payload) {
     const indexEntries = collectCommentIndexEntries(payload);
     if (indexEntries.length) {
+      agentLog(
+        "page-hook.js:applyFilteredPayload",
+        "post COMMENT_INDEX",
+        { entryCount: indexEntries.length },
+        "A"
+      );
       postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
     }
     const { payload: next, blocked: blocked2 } = filterNvCommentPayload(payload, engine);

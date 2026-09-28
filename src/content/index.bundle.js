@@ -96,6 +96,24 @@
     return row.getAttribute("data-comment-id") || row.getAttribute("data-commentid") || row.getAttribute("data-id") || row.getAttribute("data-nvcomment-id") || "";
   }
 
+  // src/shared/debug-log.js
+  function agentLog(location2, message, data, hypothesisId) {
+    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
+      body: JSON.stringify({
+        sessionId: "690dc9",
+        location: location2,
+        message,
+        data,
+        hypothesisId,
+        timestamp: Date.now(),
+        runId: "pre-fix"
+      })
+    }).catch(() => {
+    });
+  }
+
   // src/shared/shipped-defaults.json
   var shipped_defaults_default = {
     lengthFilter: {
@@ -386,6 +404,24 @@
     const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
     const userId = resolveUserIdForRow(row, userIdByCommentId2, userIdByBody2, commentText) || void 0;
     const commentId = commentIdFromRow(row) || void 0;
+    const normKey = normalizeText(commentText);
+    const bodySlot = userIdByBody2?.get(normKey);
+    const bodyLookup = bodySlot === BODY_USER_INDEX_AMBIGUOUS ? "ambiguous" : bodySlot ? "hit" : normKey ? "miss" : "empty_key";
+    agentLog(
+      "comment-adapter.js:commentFromListTarget",
+      "resolve comment row",
+      {
+        lineCount: text.split("\n").filter(Boolean).length,
+        commentTextLen: commentText.length,
+        rowDataIndex: row.getAttribute("data-index") ?? "",
+        commentIdAttr: commentId ?? "",
+        idMapSize: userIdByCommentId2?.size ?? 0,
+        bodyMapSize: userIdByBody2?.size ?? 0,
+        bodyLookup,
+        resolvedUserId: Boolean(userId)
+      },
+      "B"
+    );
     return {
       text: commentText,
       userId,
@@ -607,6 +643,16 @@
       if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
         mergeCommentIndex(userIdByCommentId, data.entries);
         mergeBodyUserIndex(userIdByBody, data.entries);
+        agentLog(
+          "index.js:COMMENT_INDEX",
+          "merged comment index",
+          {
+            entryCount: data.entries.length,
+            idMapSize: userIdByCommentId.size,
+            bodyMapSize: userIdByBody.size
+          },
+          "A"
+        );
       }
       if (data.type === MESSAGE_TYPES.STATS && data.stats) {
         stats = data.stats;

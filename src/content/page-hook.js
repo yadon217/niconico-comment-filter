@@ -1,5 +1,6 @@
 import { COMMENT_API_HOSTS, MESSAGE_TYPES, SOURCE } from "../shared/constants.js";
 import { collectCommentIndexEntries } from "../shared/comment-user-index.js";
+import { agentLog } from "../shared/debug-log.js";
 import { createFilterEngine, emptyStats, addStat, filterNvCommentPayload } from "../shared/filter-engine.js";
 import { defaultSettings } from "../shared/schema.js";
 
@@ -31,6 +32,12 @@ function postToIsolated(type, extra) {
 function applyFilteredPayload(payload) {
   const indexEntries = collectCommentIndexEntries(payload);
   if (indexEntries.length) {
+    agentLog(
+      "page-hook.js:applyFilteredPayload",
+      "post COMMENT_INDEX",
+      { entryCount: indexEntries.length },
+      "A",
+    );
     postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
   }
   const { payload: next, blocked } = filterNvCommentPayload(payload, engine);
