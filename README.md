@@ -4,6 +4,12 @@
 
 人間向けの設計・手順の正本は Notion: [【設計書】ニコニコ動画 コメントフィルター Chrome拡張](https://app.notion.com/p/3e2847c9637a81d3b13cfa357b775d16)
 
+## Chrome Web Store
+
+- 現在: **v0.1.3** を審査提出済み（2026-09-28、審査待ち）
+- 手順・提出ログ: [Chrome Web Store 公開手順](https://app.notion.com/p/3e9847c9637a81c5b858ccc3b91adb13)
+- プライバシーポリシー: [Notion（Web 公開）](https://app.notion.com/p/3e9847c9637a814ba31af9df0a66b0f5)
+
 ## 読み込み
 
 1. Chrome で `chrome://extensions`
