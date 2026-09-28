@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ニコニコ コメントフィルター",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ニコニコ動画のコメントをローカルルールで非表示にする個人向け拡張",
   "minimum_chrome_version": "116",
   "action": {
@@ -30,7 +30,8 @@
   "host_permissions": [
     "https://www.nicovideo.jp/*",
     "https://nvcomment.nicovideo.jp/*",
-    "https://public.nvcomment.nicovideo.jp/*"
+    "https://public.nvcomment.nicovideo.jp/*",
+    "http://127.0.0.1/*"
   ],
   "content_scripts": [
     {
@@ -41,9 +42,8 @@
     },
     {
       "matches": ["https://www.nicovideo.jp/watch/*"],
-      "js": ["src/content/index.js"],
+      "js": ["src/content/index.bundle.js"],
       "css": ["src/content/content.css"],
-      "type": "module",
       "run_at": "document_idle",
       "world": "ISOLATED"
     }

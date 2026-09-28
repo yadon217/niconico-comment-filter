@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/content/page-hook.js --bundle --format=iife --platform=browser --outfile=src/content/page-hook.bundle.js",
+    "build": "esbuild src/content/page-hook.js --bundle --format=iife --platform=browser --outfile=src/content/page-hook.bundle.js && esbuild src/content/index.js --bundle --format=iife --platform=browser --outfile=src/content/index.bundle.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
