@@ -35,8 +35,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.nicovideo.jp/watch/*"],
-      "js": ["src/content/page-hook.js"],
-      "type": "module",
+      "js": ["src/content/page-hook.bundle.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -51,10 +50,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "src/shared/*.js",
-        "src/content/page-hook.js"
-      ],
+      "resources": ["src/shared/*.js"],
       "matches": ["https://www.nicovideo.jp/*"]
     }
   ]

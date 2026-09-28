@@ -9,3 +9,5 @@
 1. Chrome で `chrome://extensions`
 2. デベロッパーモードをオン
 3. 「パッケージ化されていない拡張機能を読み込む」→ このリポジトリのルート
+
+`page-hook.js` を変更したときは `npm run build` で MAIN world 用バンドルを再生成してから拡張を更新する。

@@ -4,10 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build": "esbuild src/content/page-hook.js --bundle --format=iife --platform=browser --outfile=src/content/page-hook.bundle.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "vitest": "^3.2.4"
   }
 }
