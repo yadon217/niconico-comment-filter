@@ -166,19 +166,34 @@ function looksLikeAsciiArt(text) {
 export function filterNvCommentPayload(payload, engine) {
   const threads = payload?.data?.threads;
   if (!Array.isArray(threads)) {
-    return { payload, blocked: [] };
+    return { payload, blocked: [], debugSummary: { totalIn: 0, totalKept: 0 } };
   }
   const blocked = [];
+  const byReason = {};
+  let totalIn = 0;
+  let totalKept = 0;
+  const countMismatch = [];
+  const styleBlockedNotColored = [];
   const nextThreads = threads.map((thread) => {
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
     const kept = [];
     for (const comment of comments) {
+      totalIn += 1;
+      const style = traitsFromNvCommands(comment?.commands);
       const result = engine.evaluate({
         text: comment?.body ?? "",
         userId: comment?.userId ? String(comment.userId) : undefined,
-        style: traitsFromNvCommands(comment?.commands),
+        style,
       });
       if (result.blocked) {
+        const reason = result.reason ?? "unknown";
+        byReason[reason] = (byReason[reason] ?? 0) + 1;
+        if (reason === REASONS.STYLE && !style.hasNonDefaultColor) {
+          styleBlockedNotColored.push({
+            commands: Array.isArray(comment?.commands) ? comment.commands.slice(0, 8) : [],
+            style,
+          });
+        }
         blocked.push({
           id: comment?.id != null ? String(comment.id) : "",
           text: comment?.body ?? "",
@@ -186,11 +201,46 @@ export function filterNvCommentPayload(payload, engine) {
           result,
         });
       } else {
+        totalKept += 1;
         kept.push(comment);
       }
     }
+    const declared = thread?.commentCount;
+    if (typeof declared === "number" && declared !== kept.length) {
+      countMismatch.push({
+        fork: thread?.fork,
+        declared,
+        kept: kept.length,
+        removed: comments.length - kept.length,
+      });
+    }
     return { ...thread, comments: kept };
   });
+  const debugSummary = {
+    totalIn,
+    totalKept,
+    byReason,
+    countMismatch: countMismatch.slice(0, 5),
+    styleBlockedNotColoredSample: styleBlockedNotColored.slice(0, 8),
+    styleBlockedNotColoredCount: styleBlockedNotColored.length,
+  };
+  // #region agent log
+  if (totalIn > 0 && Object.keys(byReason).length > 0) {
+    fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2771b2" },
+      body: JSON.stringify({
+        sessionId: "2771b2",
+        runId: "pre-fix",
+        hypothesisId: "H4-H5",
+        location: "filter-engine.js:filterNvCommentPayload",
+        message: "block reason breakdown",
+        data: debugSummary,
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
   return {
     payload: {
       ...payload,
@@ -200,6 +250,7 @@ export function filterNvCommentPayload(payload, engine) {
       },
     },
     blocked,
+    debugSummary,
   };
 }
 
