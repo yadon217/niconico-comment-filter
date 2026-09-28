@@ -20,7 +20,10 @@
 | `src/shared/filter-engine.js` | サイト非依存の判定 |
 | `src/shared/schema.js` | 設定スキーマ・バリデーション |
 | `src/content/comment-adapter.js` | ニコニコ固有の取得・DOM |
-| `src/content/page-hook.js` | MAIN world の fetch フック（必要な場合のみ） |
+| `src/content/page-hook.js` | MAIN world の fetch フック（ソース。実行時は bundle） |
+| `src/content/inject-page-hook.js` | `document_start` で bundle をページへ注入 |
+| `src/content/index.js` | ISOLATED 本体（ソース。実行時は bundle） |
+| `src/content/*.bundle.js` | esbuild 出力。manifest が参照する実行物 |
 | `src/popup/` `src/options/` | UI |
 | `tests/` | Filter Engine の Vitest |
 
@@ -30,11 +33,13 @@
 - MAIN world へ渡すメッセージは origin と形を検証する
 - `innerHTML` に生文字列を入れない
 - force push しない。`.env` をコミットしない
+- content script は Chrome 上で ES module の `import` が効かないため、`page-hook.js` / `index.js` 変更後は `npm run build` で bundle を再生成する
 
 ## テスト
 
 ```bash
 npm test
+npm run build   # content script 変更時
 ```
 
 設計書 §14.1 のケースを維持する。

@@ -10,4 +10,4 @@
 2. デベロッパーモードをオン
 3. 「パッケージ化されていない拡張機能を読み込む」→ このリポジトリのルート
 
-`page-hook.js` / `index.js` を変更したときは `npm run build` で `*.bundle.js` を再生成してから拡張を更新する。
+初回および `src/content/page-hook.js` / `index.js` 変更後は `npm run build` を実行してから拡張を更新する（manifest は `*.bundle.js` を読み込む）。
