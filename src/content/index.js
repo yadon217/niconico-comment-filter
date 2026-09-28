@@ -96,21 +96,6 @@ function reportStats() {
 }
 
 async function boot() {
-  // #region agent log
-  fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ef0df1" },
-    body: JSON.stringify({
-      sessionId: "ef0df1",
-      runId: "post-fix",
-      hypothesisId: "H1",
-      location: "index.js:boot",
-      message: "isolated content boot entered",
-      data: { href: location.href, watch: isWatchPage() },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!isWatchPage()) return;
   settings = await loadSettings();
   pushSettings();
