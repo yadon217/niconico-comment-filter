@@ -45,4 +45,4 @@ npm test
 npm run build   # content script 変更時
 ```
 
-設計書 §14.1 のケースを維持する（種別フィルタ含む。現状 34 tests）。
+設計書 §14.1 のケースを維持する（種別フィルタ含む。現状 37 tests）。

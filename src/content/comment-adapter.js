@@ -1,3 +1,4 @@
+import { resolveUserIdForRow, commentIdFromRow } from "../shared/comment-user-index.js";
 import { MESSAGE_TYPES, SOURCE } from "../shared/constants.js";
 
 export function findCommentListSection() {
@@ -14,8 +15,9 @@ export function findListScroller(section) {
 /**
  * Best-effort row extraction. Selectors stay in the adapter.
  * @param {Element} target
+ * @param {Map<string, string> | undefined} userIdByCommentId
  */
-export function commentFromListTarget(target) {
+export function commentFromListTarget(target, userIdByCommentId) {
   if (!(target instanceof Element)) return null;
   const section = findCommentListSection();
   if (!section || !section.contains(target)) return null;
@@ -23,14 +25,12 @@ export function commentFromListTarget(target) {
   if (!row || row === section) return null;
   const text = (row.innerText || "").trim();
   if (!text || text === "コメントリスト") return null;
-  const userId =
-    row.getAttribute("data-user-id") ||
-    row.getAttribute("data-userid") ||
-    row.getAttribute("data-user") ||
-    "";
+  const userId = resolveUserIdForRow(row, userIdByCommentId) || undefined;
+  const commentId = commentIdFromRow(row) || undefined;
   return {
     text: text.split("\n").filter(Boolean).slice(-1)[0] ?? text,
-    userId: userId || undefined,
+    userId,
+    commentId,
     row,
   };
 }

@@ -9,6 +9,8 @@ const els = {
   maxLength: document.getElementById("maxLength"),
   keywordRows: document.getElementById("keyword-rows"),
   keywordError: document.getElementById("keyword-error"),
+  userRows: document.getElementById("user-rows"),
+  userError: document.getElementById("user-error"),
   importError: document.getElementById("import-error"),
   styleEnabled: document.getElementById("style-enabled"),
   styleColor: document.getElementById("style-color"),
@@ -130,6 +132,31 @@ function renderKeywords() {
   }
 }
 
+function renderBlockedUsers() {
+  els.userRows.replaceChildren();
+  for (const rule of settings.blockedUsers) {
+    const tr = document.createElement("tr");
+    const enabledTd = document.createElement("td");
+    const enabled = document.createElement("input");
+    enabled.type = "checkbox";
+    enabled.checked = rule.enabled;
+    enabled.addEventListener("change", () =>
+      toggleList("blockedUsers", rule.id, enabled.checked),
+    );
+    enabledTd.appendChild(enabled);
+    const valueTd = document.createElement("td");
+    valueTd.textContent = rule.userId;
+    const opTd = document.createElement("td");
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "削除";
+    del.addEventListener("click", () => removeFromList("blockedUsers", rule.id));
+    opTd.appendChild(del);
+    tr.append(enabledTd, valueTd, opTd);
+    els.userRows.appendChild(tr);
+  }
+}
+
 function render() {
   els.enabled.checked = settings.enabled;
   els.debug.checked = settings.debugMode;
@@ -142,6 +169,7 @@ function render() {
   els.styleRuleCombinator.value =
     styleRule.combinator === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
   renderKeywords();
+  renderBlockedUsers();
 }
 
 function addRuleForm(formId, handler) {
@@ -194,6 +222,32 @@ async function init() {
       keywordRules: [
         ...settings.keywordRules,
         { id: createId("kw"), enabled: true, value, matchMode, createdAt: new Date().toISOString() },
+      ],
+    });
+  });
+
+  addRuleForm("user-form", async () => {
+    const userId = document.getElementById("user-id").value.trim();
+    if (!userId) {
+      showError(els.userError, "ユーザー ID を入力してください");
+      return;
+    }
+    if (settings.blockedUsers.some((item) => item.userId === userId)) {
+      showError(els.userError, "同じユーザー ID が既に登録されています");
+      return;
+    }
+    showError(els.userError, "");
+    document.getElementById("user-id").value = "";
+    await persist({
+      ...settings,
+      blockedUsers: [
+        ...settings.blockedUsers,
+        {
+          id: createId("user"),
+          enabled: true,
+          userId,
+          createdAt: new Date().toISOString(),
+        },
       ],
     });
   });

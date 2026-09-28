@@ -42,6 +42,29 @@
     </section>
 
     <section>
+      <h2>NGユーザー</h2>
+      <p class="hint">
+        ニコニコ内部のユーザー ID（API の userId）です。表示名・@ハンドルではありません。視聴ページのコメントリストを右クリックして ID
+        をコピーするか、ここに貼り付けて追加できます。
+      </p>
+      <form id="user-form">
+        <input id="user-id" placeholder="ユーザー ID" required />
+        <button type="submit">追加</button>
+      </form>
+      <p id="user-error" class="error" hidden></p>
+      <table>
+        <thead>
+          <tr>
+            <th>有効</th>
+            <th>ユーザー ID</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="user-rows"></tbody>
+      </table>
+    </section>
+
+    <section>
       <h2>コメント種別</h2>
       <p class="hint">色・サイズ・位置で非表示にします（NGワード等とは別に判定）。</p>
       <label><input id="style-enabled" type="checkbox" /> 種別フィルターを有効</label>

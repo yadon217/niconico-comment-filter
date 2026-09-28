@@ -1,4 +1,5 @@
 import { COMMENT_API_HOSTS, MESSAGE_TYPES, SOURCE } from "../shared/constants.js";
+import { collectCommentIndexEntries } from "../shared/comment-user-index.js";
 import { createFilterEngine, emptyStats, addStat, filterNvCommentPayload } from "../shared/filter-engine.js";
 import { defaultSettings } from "../shared/schema.js";
 
@@ -28,6 +29,10 @@ function postToIsolated(type, extra) {
 }
 
 function applyFilteredPayload(payload) {
+  const indexEntries = collectCommentIndexEntries(payload);
+  if (indexEntries.length) {
+    postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
+  }
   const { payload: next, blocked } = filterNvCommentPayload(payload, engine);
   for (const item of blocked) {
     addStat(stats, item.result.reason);

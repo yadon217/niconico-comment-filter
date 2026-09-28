@@ -27,6 +27,7 @@ export const MESSAGE_TYPES = Object.freeze({
   STATS: "ncf-stats",
   STATUS: "ncf-status",
   BLOCKED: "ncf-blocked",
+  COMMENT_INDEX: "ncf-comment-index",
   CONTEXT_NG: "ncf-context-ng",
 });
 

@@ -1,7 +1,7 @@
 import { createId } from "../shared/schema.js";
-import { commentFromListTarget, findCommentListSection } from "./comment-adapter.js";
+import { findCommentListSection } from "./comment-adapter.js";
 
-export function installContextMenu({ onNgUser, onNgWord }) {
+export function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
   const menu = document.createElement("div");
   menu.className = "ncf-menu";
   menu.hidden = true;
@@ -32,12 +32,19 @@ export function installContextMenu({ onNgUser, onNgWord }) {
         hide();
         return;
       }
-      const comment = commentFromListTarget(event.target);
+      const comment = resolveComment(event.target);
       if (!comment) return;
       event.preventDefault();
       menu.replaceChildren();
       if (comment.userId) {
         addItem("このユーザーをNG", () => onNgUser(comment.userId));
+        addItem("ユーザーIDをコピー", async () => {
+          try {
+            await navigator.clipboard.writeText(comment.userId);
+          } catch {
+            // ignore
+          }
+        });
       } else {
         addItem("ユーザーIDを取得できません", () => {});
       }

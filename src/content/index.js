@@ -1,8 +1,10 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
+import { mergeCommentIndex } from "../shared/comment-user-index.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
 import { loadSettings, saveSettings, subscribeSettings } from "../shared/storage.js";
 import {
+  commentFromListTarget,
   findCommentListSection,
   isWatchPage,
   onPageMessage,
@@ -15,6 +17,7 @@ let settings;
 let stats = { total: 0, byReason: {} };
 let recentBlocked = [];
 let adapterStatus = { hook: false, message: "" };
+const userIdByCommentId = new Map();
 
 function pushSettings() {
   postToPage(MESSAGE_TYPES.SETTINGS, { settings });
@@ -99,12 +102,21 @@ async function boot() {
   if (!isWatchPage()) return;
   settings = await loadSettings();
   pushSettings();
-  installContextMenu({ onNgUser: ngUser, onNgWord: ngWord });
+  installContextMenu({
+    onNgUser: ngUser,
+    onNgWord: ngWord,
+    resolveComment(target) {
+      return commentFromListTarget(target, userIdByCommentId);
+    },
+  });
   subscribeSettings((next) => {
     settings = next;
     pushSettings();
   });
   onPageMessage((data) => {
+    if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
+      mergeCommentIndex(userIdByCommentId, data.entries);
+    }
     if (data.type === MESSAGE_TYPES.STATS && data.stats) {
       stats = data.stats;
       reportStats();
@@ -126,6 +138,7 @@ async function boot() {
   watchSpaNavigation(() => {
     stats = { total: 0, byReason: {} };
     recentBlocked = [];
+    userIdByCommentId.clear();
     pushSettings();
     reportStats();
   });

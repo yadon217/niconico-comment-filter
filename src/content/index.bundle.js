@@ -25,6 +25,7 @@
     STATS: "ncf-stats",
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
+    COMMENT_INDEX: "ncf-comment-index",
     CONTEXT_NG: "ncf-context-ng"
   });
   var SOURCE = "niconico-comment-filter";
@@ -32,6 +33,35 @@
     "nvcomment.nicovideo.jp",
     "public.nvcomment.nicovideo.jp"
   ]);
+
+  // src/shared/comment-user-index.js
+  function mergeCommentIndex(map, entries, maxSize = 2e4) {
+    for (const { commentId, userId } of entries) {
+      map.set(commentId, userId);
+    }
+    while (map.size > maxSize) {
+      const oldest = map.keys().next().value;
+      if (oldest === void 0) break;
+      map.delete(oldest);
+    }
+  }
+  function domUserIdFromRow(row) {
+    if (!row) return "";
+    return row.getAttribute("data-user-id") || row.getAttribute("data-userid") || row.getAttribute("data-user") || "";
+  }
+  function commentIdFromRow(row) {
+    if (!row) return "";
+    return row.getAttribute("data-comment-id") || row.getAttribute("data-commentid") || row.getAttribute("data-id") || row.getAttribute("data-nvcomment-id") || "";
+  }
+  function resolveUserIdForRow(row, indexMap) {
+    const fromDom = domUserIdFromRow(row);
+    if (fromDom) return fromDom;
+    const commentId = commentIdFromRow(row);
+    if (commentId && indexMap?.has(commentId)) {
+      return indexMap.get(commentId) ?? "";
+    }
+    return "";
+  }
 
   // src/shared/shipped-defaults.json
   var shipped_defaults_default = {
@@ -312,7 +342,7 @@
     );
     return heading?.closest("section") ?? null;
   }
-  function commentFromListTarget(target) {
+  function commentFromListTarget(target, userIdByCommentId2) {
     if (!(target instanceof Element)) return null;
     const section = findCommentListSection();
     if (!section || !section.contains(target)) return null;
@@ -320,10 +350,12 @@
     if (!row || row === section) return null;
     const text = (row.innerText || "").trim();
     if (!text || text === "\u30B3\u30E1\u30F3\u30C8\u30EA\u30B9\u30C8") return null;
-    const userId = row.getAttribute("data-user-id") || row.getAttribute("data-userid") || row.getAttribute("data-user") || "";
+    const userId = resolveUserIdForRow(row, userIdByCommentId2) || void 0;
+    const commentId = commentIdFromRow(row) || void 0;
     return {
       text: text.split("\n").filter(Boolean).slice(-1)[0] ?? text,
-      userId: userId || void 0,
+      userId,
+      commentId,
       row
     };
   }
@@ -368,7 +400,7 @@
   }
 
   // src/content/context-menu.js
-  function installContextMenu({ onNgUser, onNgWord }) {
+  function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
     const menu = document.createElement("div");
     menu.className = "ncf-menu";
     menu.hidden = true;
@@ -396,12 +428,18 @@
           hide();
           return;
         }
-        const comment = commentFromListTarget(event.target);
+        const comment = resolveComment(event.target);
         if (!comment) return;
         event.preventDefault();
         menu.replaceChildren();
         if (comment.userId) {
           addItem("\u3053\u306E\u30E6\u30FC\u30B6\u30FC\u3092NG", () => onNgUser(comment.userId));
+          addItem("\u30E6\u30FC\u30B6\u30FCID\u3092\u30B3\u30D4\u30FC", async () => {
+            try {
+              await navigator.clipboard.writeText(comment.userId);
+            } catch {
+            }
+          });
         } else {
           addItem("\u30E6\u30FC\u30B6\u30FCID\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093", () => {
           });
@@ -431,6 +469,7 @@
   var stats = { total: 0, byReason: {} };
   var recentBlocked = [];
   var adapterStatus = { hook: false, message: "" };
+  var userIdByCommentId = /* @__PURE__ */ new Map();
   function pushSettings() {
     postToPage(MESSAGE_TYPES.SETTINGS, { settings });
     renderDebug();
@@ -506,12 +545,21 @@
     if (!isWatchPage()) return;
     settings = await loadSettings();
     pushSettings();
-    installContextMenu({ onNgUser: ngUser, onNgWord: ngWord });
+    installContextMenu({
+      onNgUser: ngUser,
+      onNgWord: ngWord,
+      resolveComment(target) {
+        return commentFromListTarget(target, userIdByCommentId);
+      }
+    });
     subscribeSettings((next) => {
       settings = next;
       pushSettings();
     });
     onPageMessage((data) => {
+      if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
+        mergeCommentIndex(userIdByCommentId, data.entries);
+      }
       if (data.type === MESSAGE_TYPES.STATS && data.stats) {
         stats = data.stats;
         reportStats();
@@ -533,6 +581,7 @@
     watchSpaNavigation(() => {
       stats = { total: 0, byReason: {} };
       recentBlocked = [];
+      userIdByCommentId.clear();
       pushSettings();
       reportStats();
     });

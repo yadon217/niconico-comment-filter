@@ -25,6 +25,7 @@
     STATS: "ncf-stats",
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
+    COMMENT_INDEX: "ncf-comment-index",
     CONTEXT_NG: "ncf-context-ng"
   });
   var SOURCE = "niconico-comment-filter";
@@ -32,6 +33,24 @@
     "nvcomment.nicovideo.jp",
     "public.nvcomment.nicovideo.jp"
   ]);
+
+  // src/shared/comment-user-index.js
+  function collectCommentIndexEntries(payload) {
+    const entries = [];
+    const threads = payload?.data?.threads;
+    if (!Array.isArray(threads)) return entries;
+    for (const thread of threads) {
+      const comments = Array.isArray(thread.comments) ? thread.comments : [];
+      for (const comment of comments) {
+        if (comment?.id == null || comment?.userId == null) continue;
+        const commentId = String(comment.id);
+        const userId = String(comment.userId);
+        if (!commentId || !userId) continue;
+        entries.push({ commentId, userId });
+      }
+    }
+    return entries;
+  }
 
   // src/shared/comment-style.js
   function conditionMatches(traits, condition) {
@@ -584,6 +603,10 @@
     );
   }
   function applyFilteredPayload(payload) {
+    const indexEntries = collectCommentIndexEntries(payload);
+    if (indexEntries.length) {
+      postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
+    }
     const { payload: next, blocked: blocked2 } = filterNvCommentPayload(payload, engine);
     for (const item of blocked2) {
       addStat(stats, item.result.reason);
