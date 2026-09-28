@@ -1,5 +1,6 @@
 import { COMMENT_API_HOSTS, MESSAGE_TYPES, REASONS, SOURCE } from "../shared/constants.js";
 import { collectCommentIndexEntries } from "../shared/comment-user-index.js";
+import { countNvCommentUserIdInPayload, nvCommentUserId } from "../shared/nvcomment-user.js";
 import { agentLog } from "../shared/debug-log.js";
 import { createFilterEngine, emptyStats, addStat, filterNvCommentPayload } from "../shared/filter-engine.js";
 import { defaultSettings } from "../shared/schema.js";
@@ -9,6 +10,16 @@ let engine = createFilterEngine(settings);
 let stats = emptyStats();
 let adapterStatus = { hook: true, message: "" };
 let loggedCommentShape = false;
+
+function firstCommentSample(payload) {
+  const threads = payload?.data?.threads;
+  if (!Array.isArray(threads)) return null;
+  for (const thread of threads) {
+    const comments = Array.isArray(thread?.comments) ? thread.comments : [];
+    if (comments[0]) return comments[0];
+  }
+  return null;
+}
 
 function threadSummary(payload) {
   const threads = payload?.data?.threads;
@@ -42,13 +53,16 @@ function postToIsolated(type, extra) {
 
 function applyFilteredPayload(payload) {
   if (!loggedCommentShape) {
-    const first = payload?.data?.threads?.[0]?.comments?.[0];
+    const first = firstCommentSample(payload);
     if (first && typeof first === "object") {
       loggedCommentShape = true;
       agentLog(
         "page-hook.js:applyFilteredPayload",
         "sample comment keys",
-        { keys: Object.keys(first) },
+        {
+          keys: Object.keys(first),
+          nvUserIdLen: nvCommentUserId(first).length,
+        },
         "H",
       );
     }
@@ -69,6 +83,9 @@ function applyFilteredPayload(payload) {
   ).length;
   if (blockedUserRuleCount > 0) {
     const userBlocks = blocked.filter((item) => item.result.reason === REASONS.USER).length;
+    const blockedId = (settings.blockedUsers ?? []).find(
+      (item) => item.enabled !== false && item.userId,
+    )?.userId;
     agentLog(
       "page-hook.js:applyFilteredPayload",
       "user filter stats",
@@ -77,6 +94,7 @@ function applyFilteredPayload(payload) {
         totalBlocked: blocked.length,
         blockedUserRuleCount,
         engineEnabled: engine.enabled,
+        payloadMatchCount: blockedId ? countNvCommentUserIdInPayload(payload, blockedId) : 0,
       },
       "F",
     );

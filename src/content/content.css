@@ -61,6 +61,10 @@
   font: 12px/1.4 sans-serif;
 }
 
+.ncf-row-hidden {
+  display: none !important;
+}
+
 .ncf-toast {
   position: fixed;
   z-index: 2147483647;

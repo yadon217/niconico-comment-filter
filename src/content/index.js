@@ -1,5 +1,6 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
-import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap } from "../shared/comment-user-index.js";
+import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap, resolveUserIdForRow } from "../shared/comment-user-index.js";
+import { countNvCommentUserIdInPayload } from "../shared/nvcomment-user.js";
 import { agentLog } from "../shared/debug-log.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
@@ -25,6 +26,7 @@ const userIdByListIndex = new Map();
 function pushSettings() {
   postToPage(MESSAGE_TYPES.SETTINGS, { settings });
   renderDebug();
+  syncCommentListVisibility();
 }
 
 async function setSettings(next) {
@@ -76,9 +78,14 @@ async function ngUser(userId) {
   agentLog(
     "index.js:ngUser",
     "blocked user added",
-    { userIdLen: userId.length, ruleCount: settings.blockedUsers.length + 1 },
+    {
+      userIdLen: userId.length,
+      ruleCount: settings.blockedUsers.length + 1,
+      indexOccurrences: [...userIdByCommentId.values()].filter((id) => id === userId).length,
+    },
     "F",
   );
+  syncCommentListVisibility();
   return true;
 }
 
@@ -106,6 +113,49 @@ function reportStats() {
     stats,
     videoId: location.pathname.split("/").pop(),
   });
+}
+
+function blockedUserIdSet() {
+  return new Set(
+    (settings?.blockedUsers ?? [])
+      .filter((item) => item.enabled !== false && item.userId)
+      .map((item) => item.userId),
+  );
+}
+
+function syncCommentListVisibility() {
+  const section = findCommentListSection();
+  const blocked = blockedUserIdSet();
+  if (!section || !settings?.enabled || !blocked.size) {
+    section?.querySelectorAll(".ncf-row-hidden").forEach((el) => {
+      el.classList.remove("ncf-row-hidden");
+    });
+    return;
+  }
+  let hidden = 0;
+  let resolved = 0;
+  for (const row of section.querySelectorAll("[data-index]")) {
+    if (!(row instanceof Element)) continue;
+    const text = (row.innerText || "").trim();
+    const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
+    const userId = resolveUserIdForRow(
+      row,
+      userIdByCommentId,
+      userIdByBody,
+      commentText,
+      userIdByListIndex,
+    );
+    if (userId) resolved += 1;
+    const shouldHide = Boolean(userId && blocked.has(userId));
+    row.classList.toggle("ncf-row-hidden", shouldHide);
+    if (shouldHide) hidden += 1;
+  }
+  agentLog(
+    "index.js:syncCommentListVisibility",
+    "list rows hidden for blocked users",
+    { hidden, resolved, blockedRuleCount: blocked.size },
+    "G",
+  );
 }
 
 async function boot() {
@@ -139,6 +189,7 @@ async function boot() {
         },
         "A",
       );
+      syncCommentListVisibility();
     }
     if (data.type === MESSAGE_TYPES.STATS && data.stats) {
       stats = data.stats;
@@ -168,6 +219,7 @@ async function boot() {
     reportStats();
   });
   const observer = new MutationObserver(() => {
+    syncCommentListVisibility();
     if (settings?.debugMode && !document.querySelector(".ncf-debug")) renderDebug();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });

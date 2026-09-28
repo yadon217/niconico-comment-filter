@@ -1,4 +1,5 @@
 import { normalizeText } from "./normalize.js";
+import { nvCommentUserId } from "./nvcomment-user.js";
 
 /** @typedef {{ commentId: string, userId: string, body: string, listIndex: string }} CommentIndexEntry */
 
@@ -36,16 +37,16 @@ export function collectCommentIndexEntries(payload) {
   let listIndexCounter = 0;
   for (const comment of listComments) {
     const listIndex = String(listIndexCounter++);
-    if (comment?.id == null || comment?.userId == null) continue;
+    const uid = nvCommentUserId(comment);
+    if (comment?.id == null || !uid) continue;
     listIndexByCommentId.set(String(comment.id), listIndex);
   }
   for (const thread of threads) {
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
     for (const comment of comments) {
-      if (comment?.id == null || comment?.userId == null) continue;
+      const userId = nvCommentUserId(comment);
+      if (comment?.id == null || !userId) continue;
       const commentId = String(comment.id);
-      const userId = String(comment.userId);
-      if (!commentId || !userId) continue;
       entries.push({
         commentId,
         userId,
@@ -156,12 +157,19 @@ export function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexM
  */
 export function domUserIdFromRow(row) {
   if (!row) return "";
-  return (
+  const fromAttr =
     row.getAttribute("data-user-id") ||
     row.getAttribute("data-userid") ||
     row.getAttribute("data-user") ||
-    ""
-  );
+    "";
+  if (fromAttr) return fromAttr;
+  if (typeof row.querySelector === "function") {
+    const link = row.querySelector('a[href*="/user/"]');
+    const href = link?.getAttribute("href") ?? "";
+    const match = href.match(/\/user\/([^/?#]+)/);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  }
+  return "";
 }
 
 /**

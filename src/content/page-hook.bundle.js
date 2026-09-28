@@ -44,6 +44,48 @@
     return Array.from(raw).length;
   }
 
+  // src/shared/nvcomment-user.js
+  function nvCommentUserId(comment) {
+    if (!comment || typeof comment !== "object") return "";
+    const raw = (
+      /** @type {Record<string, unknown>} */
+      comment
+    );
+    if (raw.userId != null && raw.userId !== "") return String(raw.userId);
+    if (raw.user_id != null && raw.user_id !== "") return String(raw.user_id);
+    const owner = raw.owner;
+    if (owner && typeof owner === "object") {
+      const o = (
+        /** @type {Record<string, unknown>} */
+        owner
+      );
+      if (o.userId != null && o.userId !== "") return String(o.userId);
+      if (o.id != null && o.id !== "") return String(o.id);
+    }
+    const user = raw.user;
+    if (user && typeof user === "object") {
+      const u = (
+        /** @type {Record<string, unknown>} */
+        user
+      );
+      if (u.id != null && u.id !== "") return String(u.id);
+    }
+    return "";
+  }
+  function countNvCommentUserIdInPayload(payload, targetUserId) {
+    if (!targetUserId) return 0;
+    const threads = payload?.data?.threads;
+    if (!Array.isArray(threads)) return 0;
+    let count = 0;
+    for (const thread of threads) {
+      const comments = Array.isArray(thread?.comments) ? thread.comments : [];
+      for (const comment of comments) {
+        if (nvCommentUserId(comment) === targetUserId) count += 1;
+      }
+    }
+    return count;
+  }
+
   // src/shared/comment-user-index.js
   function pickListThread(threads) {
     if (!threads.length) return null;
@@ -68,16 +110,16 @@
     let listIndexCounter = 0;
     for (const comment of listComments) {
       const listIndex = String(listIndexCounter++);
-      if (comment?.id == null || comment?.userId == null) continue;
+      const uid = nvCommentUserId(comment);
+      if (comment?.id == null || !uid) continue;
       listIndexByCommentId.set(String(comment.id), listIndex);
     }
     for (const thread of threads) {
       const comments = Array.isArray(thread.comments) ? thread.comments : [];
       for (const comment of comments) {
-        if (comment?.id == null || comment?.userId == null) continue;
+        const userId = nvCommentUserId(comment);
+        if (comment?.id == null || !userId) continue;
         const commentId = String(comment.id);
-        const userId = String(comment.userId);
-        if (!commentId || !userId) continue;
         entries.push({
           commentId,
           userId,
@@ -573,16 +615,17 @@
       const comments = Array.isArray(thread.comments) ? thread.comments : [];
       const kept = [];
       for (const comment of comments) {
+        const uid = nvCommentUserId(comment);
         const result = engine2.evaluate({
           text: comment?.body ?? "",
-          userId: comment?.userId ? String(comment.userId) : void 0,
+          userId: uid || void 0,
           style: traitsFromNvCommands(comment?.commands)
         });
         if (result.blocked) {
           blocked2.push({
             id: comment?.id != null ? String(comment.id) : "",
             text: comment?.body ?? "",
-            userId: comment?.userId ? String(comment.userId) : "",
+            userId: uid,
             result
           });
         } else {
@@ -630,6 +673,15 @@
   var stats = emptyStats();
   var adapterStatus = { hook: true, message: "" };
   var loggedCommentShape = false;
+  function firstCommentSample(payload) {
+    const threads = payload?.data?.threads;
+    if (!Array.isArray(threads)) return null;
+    for (const thread of threads) {
+      const comments = Array.isArray(thread?.comments) ? thread.comments : [];
+      if (comments[0]) return comments[0];
+    }
+    return null;
+  }
   function threadSummary(payload) {
     const threads = payload?.data?.threads;
     if (!Array.isArray(threads)) return [];
@@ -659,13 +711,16 @@
   }
   function applyFilteredPayload(payload) {
     if (!loggedCommentShape) {
-      const first = payload?.data?.threads?.[0]?.comments?.[0];
+      const first = firstCommentSample(payload);
       if (first && typeof first === "object") {
         loggedCommentShape = true;
         agentLog(
           "page-hook.js:applyFilteredPayload",
           "sample comment keys",
-          { keys: Object.keys(first) },
+          {
+            keys: Object.keys(first),
+            nvUserIdLen: nvCommentUserId(first).length
+          },
           "H"
         );
       }
@@ -686,6 +741,9 @@
     ).length;
     if (blockedUserRuleCount > 0) {
       const userBlocks = blocked2.filter((item) => item.result.reason === REASONS.USER).length;
+      const blockedId = (settings.blockedUsers ?? []).find(
+        (item) => item.enabled !== false && item.userId
+      )?.userId;
       agentLog(
         "page-hook.js:applyFilteredPayload",
         "user filter stats",
@@ -693,7 +751,8 @@
           userBlocks,
           totalBlocked: blocked2.length,
           blockedUserRuleCount,
-          engineEnabled: engine.enabled
+          engineEnabled: engine.enabled,
+          payloadMatchCount: blockedId ? countNvCommentUserIdInPayload(payload, blockedId) : 0
         },
         "F"
       );

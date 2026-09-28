@@ -1,6 +1,7 @@
 import { evaluateStyleFilter } from "./comment-style.js";
 import { MATCH_MODES, REASONS } from "./constants.js";
 import { traitsFromNvCommands } from "./nvcomment-commands.js";
+import { nvCommentUserId } from "./nvcomment-user.js";
 import { codePointLength, normalizeText } from "./normalize.js";
 import { compileRegex } from "./schema.js";
 
@@ -173,16 +174,17 @@ export function filterNvCommentPayload(payload, engine) {
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
     const kept = [];
     for (const comment of comments) {
+      const uid = nvCommentUserId(comment);
       const result = engine.evaluate({
         text: comment?.body ?? "",
-        userId: comment?.userId ? String(comment.userId) : undefined,
+        userId: uid || undefined,
         style: traitsFromNvCommands(comment?.commands),
       });
       if (result.blocked) {
         blocked.push({
           id: comment?.id != null ? String(comment.id) : "",
           text: comment?.body ?? "",
-          userId: comment?.userId ? String(comment.userId) : "",
+          userId: uid,
           result,
         });
       } else {
