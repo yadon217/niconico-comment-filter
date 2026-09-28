@@ -51,7 +51,33 @@ function postToIsolated(type, extra) {
   );
 }
 
-function applyFilteredPayload(payload) {
+function countPayloadComments(payload) {
+  const threads = payload?.data?.threads;
+  if (!Array.isArray(threads)) return 0;
+  return threads.reduce(
+    (sum, thread) => sum + (Array.isArray(thread?.comments) ? thread.comments.length : 0),
+    0,
+  );
+}
+
+function patchXhrJsonResponse(xhr, payload) {
+  const next = applyFilteredPayload(payload, "xhr");
+  const filtered = JSON.stringify(next);
+  Object.defineProperty(xhr, "responseText", {
+    configurable: true,
+    get() {
+      return filtered;
+    },
+  });
+  Object.defineProperty(xhr, "response", {
+    configurable: true,
+    get() {
+      return filtered;
+    },
+  });
+}
+
+function applyFilteredPayload(payload, transport = "unknown") {
   if (!loggedCommentShape) {
     const first = firstCommentSample(payload);
     if (first && typeof first === "object") {
@@ -83,7 +109,9 @@ function applyFilteredPayload(payload) {
     );
     postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
   }
+  const inputCommentCount = countPayloadComments(payload);
   const { payload: next, blocked } = filterNvCommentPayload(payload, engine);
+  const outputCommentCount = countPayloadComments(next);
   const blockedUserRuleCount = (settings?.blockedUsers ?? []).filter(
     (item) => item.enabled !== false && item.userId,
   ).length;
@@ -96,11 +124,14 @@ function applyFilteredPayload(payload) {
       "page-hook.js:applyFilteredPayload",
       "user filter stats",
       {
+        transport,
         userBlocks,
         totalBlocked: blocked.length,
         blockedUserRuleCount,
         engineEnabled: engine.enabled,
         payloadMatchCount: blockedId ? countNvCommentUserIdInPayload(payload, blockedId) : 0,
+        inputCommentCount,
+        outputCommentCount,
       },
       "F",
     );
@@ -148,7 +179,7 @@ window.fetch = async function ncfFetch(input, init) {
   if (!isCommentApi(url) || !engine.enabled) return response;
   try {
     const payload = await response.clone().json();
-    const next = applyFilteredPayload(payload);
+    const next = applyFilteredPayload(payload, "fetch");
     return new Response(JSON.stringify(next), {
       status: response.status,
       statusText: response.statusText,
@@ -168,21 +199,34 @@ const originalOpen = XMLHttpRequest.prototype.open;
 const originalSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.open = function ncfOpen(method, url, ...rest) {
   this.__ncfUrl = url;
+  this.__ncfXhrHook = isCommentApi(url);
+  if (this.__ncfXhrHook) {
+    const xhr = this;
+    xhr.addEventListener(
+      "readystatechange",
+      function ncfReadyState() {
+        if (xhr.readyState !== 4 || xhr.__ncfResponsePatched) return;
+        if (!engine.enabled) return;
+        try {
+          xhr.__ncfResponsePatched = true;
+          const payload = JSON.parse(xhr.responseText);
+          patchXhrJsonResponse(xhr, payload);
+          agentLog(
+            "page-hook.js:xhr",
+            "patched response at readystatechange capture",
+            { commentCountBefore: countPayloadComments(payload) },
+            "J",
+          );
+        } catch {
+          // leave original response
+        }
+      },
+      true,
+    );
+  }
   return originalOpen.call(this, method, url, ...rest);
 };
 XMLHttpRequest.prototype.send = function ncfSend(body) {
-  if (isCommentApi(this.__ncfUrl) && engine.enabled) {
-    this.addEventListener("load", () => {
-      try {
-        const payload = JSON.parse(this.responseText);
-        const next = applyFilteredPayload(payload);
-        Object.defineProperty(this, "responseText", { value: JSON.stringify(next) });
-        Object.defineProperty(this, "response", { value: JSON.stringify(next) });
-      } catch {
-        // leave original response
-      }
-    });
-  }
   return originalSend.call(this, body);
 };
 
