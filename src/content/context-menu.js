@@ -1,5 +1,14 @@
-import { createId } from "../shared/schema.js";
 import { findCommentListSection } from "./comment-adapter.js";
+
+function showToast(message) {
+  const existing = document.querySelector(".ncf-toast");
+  existing?.remove();
+  const toast = document.createElement("div");
+  toast.className = "ncf-toast";
+  toast.textContent = message;
+  document.documentElement.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 2500);
+}
 
 export function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
   const menu = document.createElement("div");
@@ -18,8 +27,7 @@ export function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
     button.textContent = label;
     button.addEventListener("click", (event) => {
       event.preventDefault();
-      handler();
-      hide();
+      void Promise.resolve(handler()).finally(hide);
     });
     menu.appendChild(button);
   };
@@ -37,7 +45,10 @@ export function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
       event.preventDefault();
       menu.replaceChildren();
       if (comment.userId) {
-        addItem("このユーザーをNG", () => onNgUser(comment.userId));
+        addItem("NG IDに登録", async () => {
+          const added = await onNgUser(comment.userId);
+          if (added) showToast("NGユーザーに追加しました");
+        });
         addItem("ユーザーIDをコピー", async () => {
           try {
             await navigator.clipboard.writeText(comment.userId);
@@ -68,5 +79,5 @@ export function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
   document.addEventListener("click", hide, true);
   window.addEventListener("blur", hide);
 
-  return { hide, createId };
+  return { hide };
 }

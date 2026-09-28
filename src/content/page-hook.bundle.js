@@ -34,6 +34,16 @@
     "public.nvcomment.nicovideo.jp"
   ]);
 
+  // src/shared/normalize.js
+  function normalizeText(value) {
+    const raw = value == null ? "" : String(value);
+    return raw.normalize("NFKC").toLocaleLowerCase("en-US").trim();
+  }
+  function codePointLength(value) {
+    const raw = value == null ? "" : String(value);
+    return Array.from(raw).length;
+  }
+
   // src/shared/comment-user-index.js
   function collectCommentIndexEntries(payload) {
     const entries = [];
@@ -46,7 +56,11 @@
         const commentId = String(comment.id);
         const userId = String(comment.userId);
         if (!commentId || !userId) continue;
-        entries.push({ commentId, userId });
+        entries.push({
+          commentId,
+          userId,
+          body: comment?.body == null ? "" : String(comment.body)
+        });
       }
     }
     return entries;
@@ -170,16 +184,6 @@
       }
     }
     return { hasNonDefaultColor, size, position };
-  }
-
-  // src/shared/normalize.js
-  function normalizeText(value) {
-    const raw = value == null ? "" : String(value);
-    return raw.normalize("NFKC").toLocaleLowerCase("en-US").trim();
-  }
-  function codePointLength(value) {
-    const raw = value == null ? "" : String(value);
-    return Array.from(raw).length;
   }
 
   // src/shared/shipped-defaults.json

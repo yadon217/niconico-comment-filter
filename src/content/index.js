@@ -1,5 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
-import { mergeCommentIndex } from "../shared/comment-user-index.js";
+import { mergeBodyUserIndex, mergeCommentIndex } from "../shared/comment-user-index.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
 import { loadSettings, saveSettings, subscribeSettings } from "../shared/storage.js";
@@ -18,6 +18,7 @@ let stats = { total: 0, byReason: {} };
 let recentBlocked = [];
 let adapterStatus = { hook: false, message: "" };
 const userIdByCommentId = new Map();
+const userIdByBody = new Map();
 
 function pushSettings() {
   postToPage(MESSAGE_TYPES.SETTINGS, { settings });
@@ -61,8 +62,8 @@ function renderDebug() {
 }
 
 async function ngUser(userId) {
-  if (!userId) return;
-  if (settings.blockedUsers.some((item) => item.userId === userId)) return;
+  if (!userId) return false;
+  if (settings.blockedUsers.some((item) => item.userId === userId)) return false;
   await setSettings({
     ...settings,
     blockedUsers: [
@@ -70,6 +71,7 @@ async function ngUser(userId) {
       { id: createId("user"), enabled: true, userId, createdAt: new Date().toISOString() },
     ],
   });
+  return true;
 }
 
 async function ngWord(value) {
@@ -106,7 +108,7 @@ async function boot() {
     onNgUser: ngUser,
     onNgWord: ngWord,
     resolveComment(target) {
-      return commentFromListTarget(target, userIdByCommentId);
+      return commentFromListTarget(target, userIdByCommentId, userIdByBody);
     },
   });
   subscribeSettings((next) => {
@@ -116,6 +118,7 @@ async function boot() {
   onPageMessage((data) => {
     if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
       mergeCommentIndex(userIdByCommentId, data.entries);
+      mergeBodyUserIndex(userIdByBody, data.entries);
     }
     if (data.type === MESSAGE_TYPES.STATS && data.stats) {
       stats = data.stats;
@@ -139,6 +142,7 @@ async function boot() {
     stats = { total: 0, byReason: {} };
     recentBlocked = [];
     userIdByCommentId.clear();
+    userIdByBody.clear();
     pushSettings();
     reportStats();
   });

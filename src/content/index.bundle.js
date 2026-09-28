@@ -34,7 +34,14 @@
     "public.nvcomment.nicovideo.jp"
   ]);
 
+  // src/shared/normalize.js
+  function normalizeText(value) {
+    const raw = value == null ? "" : String(value);
+    return raw.normalize("NFKC").toLocaleLowerCase("en-US").trim();
+  }
+
   // src/shared/comment-user-index.js
+  var BODY_USER_INDEX_AMBIGUOUS = "__ambiguous__";
   function mergeCommentIndex(map, entries, maxSize = 2e4) {
     for (const { commentId, userId } of entries) {
       map.set(commentId, userId);
@@ -45,6 +52,41 @@
       map.delete(oldest);
     }
   }
+  function mergeBodyUserIndex(map, entries, maxSize = 2e4) {
+    for (const { body, userId } of entries) {
+      const key = normalizeText(body);
+      if (!key) continue;
+      const prev = map.get(key);
+      if (prev === BODY_USER_INDEX_AMBIGUOUS) continue;
+      if (prev === void 0) {
+        map.set(key, userId);
+      } else if (prev !== userId) {
+        map.set(key, BODY_USER_INDEX_AMBIGUOUS);
+      }
+    }
+    while (map.size > maxSize) {
+      const oldest = map.keys().next().value;
+      if (oldest === void 0) break;
+      map.delete(oldest);
+    }
+  }
+  function resolveUserIdFromBodyIndex(bodyMap, commentText) {
+    if (!bodyMap || commentText == null) return "";
+    const key = normalizeText(commentText);
+    if (!key) return "";
+    const userId = bodyMap.get(key);
+    if (!userId || userId === BODY_USER_INDEX_AMBIGUOUS) return "";
+    return userId;
+  }
+  function resolveUserIdForRow(row, idMap, bodyMap, commentText) {
+    const fromDom = domUserIdFromRow(row);
+    if (fromDom) return fromDom;
+    const commentId = commentIdFromRow(row);
+    if (commentId && idMap?.has(commentId)) {
+      return idMap.get(commentId) ?? "";
+    }
+    return resolveUserIdFromBodyIndex(bodyMap, commentText);
+  }
   function domUserIdFromRow(row) {
     if (!row) return "";
     return row.getAttribute("data-user-id") || row.getAttribute("data-userid") || row.getAttribute("data-user") || "";
@@ -52,15 +94,6 @@
   function commentIdFromRow(row) {
     if (!row) return "";
     return row.getAttribute("data-comment-id") || row.getAttribute("data-commentid") || row.getAttribute("data-id") || row.getAttribute("data-nvcomment-id") || "";
-  }
-  function resolveUserIdForRow(row, indexMap) {
-    const fromDom = domUserIdFromRow(row);
-    if (fromDom) return fromDom;
-    const commentId = commentIdFromRow(row);
-    if (commentId && indexMap?.has(commentId)) {
-      return indexMap.get(commentId) ?? "";
-    }
-    return "";
   }
 
   // src/shared/shipped-defaults.json
@@ -342,7 +375,7 @@
     );
     return heading?.closest("section") ?? null;
   }
-  function commentFromListTarget(target, userIdByCommentId2) {
+  function commentFromListTarget(target, userIdByCommentId2, userIdByBody2) {
     if (!(target instanceof Element)) return null;
     const section = findCommentListSection();
     if (!section || !section.contains(target)) return null;
@@ -350,10 +383,11 @@
     if (!row || row === section) return null;
     const text = (row.innerText || "").trim();
     if (!text || text === "\u30B3\u30E1\u30F3\u30C8\u30EA\u30B9\u30C8") return null;
-    const userId = resolveUserIdForRow(row, userIdByCommentId2) || void 0;
+    const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
+    const userId = resolveUserIdForRow(row, userIdByCommentId2, userIdByBody2, commentText) || void 0;
     const commentId = commentIdFromRow(row) || void 0;
     return {
-      text: text.split("\n").filter(Boolean).slice(-1)[0] ?? text,
+      text: commentText,
       userId,
       commentId,
       row
@@ -400,6 +434,15 @@
   }
 
   // src/content/context-menu.js
+  function showToast(message) {
+    const existing = document.querySelector(".ncf-toast");
+    existing?.remove();
+    const toast = document.createElement("div");
+    toast.className = "ncf-toast";
+    toast.textContent = message;
+    document.documentElement.appendChild(toast);
+    window.setTimeout(() => toast.remove(), 2500);
+  }
   function installContextMenu({ onNgUser, onNgWord, resolveComment }) {
     const menu = document.createElement("div");
     menu.className = "ncf-menu";
@@ -415,8 +458,7 @@
       button.textContent = label;
       button.addEventListener("click", (event) => {
         event.preventDefault();
-        handler();
-        hide();
+        void Promise.resolve(handler()).finally(hide);
       });
       menu.appendChild(button);
     };
@@ -433,7 +475,10 @@
         event.preventDefault();
         menu.replaceChildren();
         if (comment.userId) {
-          addItem("\u3053\u306E\u30E6\u30FC\u30B6\u30FC\u3092NG", () => onNgUser(comment.userId));
+          addItem("NG ID\u306B\u767B\u9332", async () => {
+            const added = await onNgUser(comment.userId);
+            if (added) showToast("NG\u30E6\u30FC\u30B6\u30FC\u306B\u8FFD\u52A0\u3057\u307E\u3057\u305F");
+          });
           addItem("\u30E6\u30FC\u30B6\u30FCID\u3092\u30B3\u30D4\u30FC", async () => {
             try {
               await navigator.clipboard.writeText(comment.userId);
@@ -461,7 +506,7 @@
     );
     document.addEventListener("click", hide, true);
     window.addEventListener("blur", hide);
-    return { hide, createId };
+    return { hide };
   }
 
   // src/content/index.js
@@ -470,6 +515,7 @@
   var recentBlocked = [];
   var adapterStatus = { hook: false, message: "" };
   var userIdByCommentId = /* @__PURE__ */ new Map();
+  var userIdByBody = /* @__PURE__ */ new Map();
   function pushSettings() {
     postToPage(MESSAGE_TYPES.SETTINGS, { settings });
     renderDebug();
@@ -507,8 +553,8 @@
     body.prepend(panel);
   }
   async function ngUser(userId) {
-    if (!userId) return;
-    if (settings.blockedUsers.some((item) => item.userId === userId)) return;
+    if (!userId) return false;
+    if (settings.blockedUsers.some((item) => item.userId === userId)) return false;
     await setSettings({
       ...settings,
       blockedUsers: [
@@ -516,6 +562,7 @@
         { id: createId("user"), enabled: true, userId, createdAt: (/* @__PURE__ */ new Date()).toISOString() }
       ]
     });
+    return true;
   }
   async function ngWord(value) {
     const text = String(value || "").trim();
@@ -549,7 +596,7 @@
       onNgUser: ngUser,
       onNgWord: ngWord,
       resolveComment(target) {
-        return commentFromListTarget(target, userIdByCommentId);
+        return commentFromListTarget(target, userIdByCommentId, userIdByBody);
       }
     });
     subscribeSettings((next) => {
@@ -559,6 +606,7 @@
     onPageMessage((data) => {
       if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
         mergeCommentIndex(userIdByCommentId, data.entries);
+        mergeBodyUserIndex(userIdByBody, data.entries);
       }
       if (data.type === MESSAGE_TYPES.STATS && data.stats) {
         stats = data.stats;
@@ -582,6 +630,7 @@
       stats = { total: 0, byReason: {} };
       recentBlocked = [];
       userIdByCommentId.clear();
+      userIdByBody.clear();
       pushSettings();
       reportStats();
     });
