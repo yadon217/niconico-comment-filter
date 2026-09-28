@@ -18,6 +18,8 @@
 | パス | 責務 |
 |---|---|
 | `src/shared/filter-engine.js` | サイト非依存の判定 |
+| `src/shared/nvcomment-commands.js` | nvcomment `commands` → style traits |
+| `src/shared/comment-style.js` | 種別ルール評価（OR/AND） |
 | `src/shared/schema.js` | 設定スキーマ・バリデーション・`defaultSettings()`（Store 同梱は `shipped-defaults.json`） |
 | `src/content/comment-adapter.js` | ニコニコ固有の取得・DOM |
 | `src/content/page-hook.js` | MAIN world の fetch フック（ソース。実行時は bundle） |
@@ -42,4 +44,4 @@ npm test
 npm run build   # content script 変更時
 ```
 
-設計書 §14.1 のケースを維持する。
+設計書 §14.1 のケースを維持する（種別フィルタ含む。現状 34 tests）。

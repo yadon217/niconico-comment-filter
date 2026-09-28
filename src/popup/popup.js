@@ -9,6 +9,7 @@ const labels = {
   [REASONS.PRESET_REPEATED]: "連打",
   [REASONS.PRESET_URL]: "URL",
   [REASONS.PRESET_AA]: "AA",
+  [REASONS.STYLE]: "種別",
 };
 
 const enabledEl = document.getElementById("enabled");
