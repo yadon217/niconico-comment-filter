@@ -28,6 +28,15 @@
     "public.nvcomment.nicovideo.jp"
   ]);
 
+  // src/shared/shipped-defaults.json
+  var shipped_defaults_default = {
+    lengthFilter: {
+      enabled: true,
+      maxLength: 50
+    },
+    keywordRules: []
+  };
+
   // src/shared/schema.js
   function nowIso() {
     return (/* @__PURE__ */ new Date()).toISOString();
@@ -38,7 +47,7 @@
     }
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   }
-  function defaultSettings() {
+  function baseSettings() {
     return {
       schemaVersion: SCHEMA_VERSION,
       enabled: true,
@@ -57,6 +66,32 @@
         asciiArt: false
       }
     };
+  }
+  function pickShippedPreset() {
+    const shipped = (
+      /** @type {Record<string, unknown>} */
+      shipped_defaults_default
+    );
+    const lengthRaw = shipped.lengthFilter && typeof shipped.lengthFilter === "object" ? (
+      /** @type {Record<string, unknown>} */
+      shipped.lengthFilter
+    ) : null;
+    return {
+      lengthFilter: lengthRaw ? {
+        enabled: lengthRaw.enabled,
+        maxLength: lengthRaw.maxLength
+      } : void 0,
+      keywordRules: Array.isArray(shipped.keywordRules) ? shipped.keywordRules : []
+    };
+  }
+  function defaultSettings() {
+    const preset = pickShippedPreset();
+    const parsed = parseSettings({
+      ...baseSettings(),
+      ...preset.lengthFilter ? { lengthFilter: preset.lengthFilter } : {},
+      keywordRules: preset.keywordRules
+    });
+    return parsed.ok ? parsed.settings : baseSettings();
   }
   function asBoolean(value, fallback) {
     return typeof value === "boolean" ? value : fallback;
@@ -99,7 +134,7 @@
       /** @type {Record<string, unknown>} */
       input.presets
     ) : {};
-    const settings2 = defaultSettings();
+    const settings2 = baseSettings();
     settings2.enabled = asBoolean(input.enabled, true);
     settings2.debugMode = asBoolean(input.debugMode, false);
     settings2.lengthFilter = {

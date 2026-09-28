@@ -1,0 +1,7 @@
+{
+  "lengthFilter": {
+    "enabled": true,
+    "maxLength": 50
+  },
+  "keywordRules": []
+}

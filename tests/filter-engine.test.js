@@ -187,6 +187,13 @@ describe("schema", () => {
     expect(result.settings.schemaVersion).toBe(1);
     expect(result.settings.lengthFilter.maxLength).toBe(50);
   });
+
+  it("applies shipped preset in defaultSettings for new installs", () => {
+    const result = defaultSettings();
+    expect(result.lengthFilter.enabled).toBe(true);
+    expect(result.lengthFilter.maxLength).toBe(50);
+    expect(Array.isArray(result.keywordRules)).toBe(true);
+  });
 });
 
 describe("nvcomment payload", () => {

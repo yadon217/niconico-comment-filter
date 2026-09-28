@@ -18,7 +18,7 @@
 | パス | 責務 |
 |---|---|
 | `src/shared/filter-engine.js` | サイト非依存の判定 |
-| `src/shared/schema.js` | 設定スキーマ・バリデーション |
+| `src/shared/schema.js` | 設定スキーマ・バリデーション・`defaultSettings()`（Store 同梱は `shipped-defaults.json`） |
 | `src/content/comment-adapter.js` | ニコニコ固有の取得・DOM |
 | `src/content/page-hook.js` | MAIN world の fetch フック（ソース。実行時は bundle） |
 | `src/content/inject-page-hook.js` | `document_start` で bundle をページへ注入 |

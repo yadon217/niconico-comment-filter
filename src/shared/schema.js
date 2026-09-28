@@ -1,4 +1,5 @@
 import { MATCH_MODES, SCHEMA_VERSION } from "./constants.js";
+import shippedDefaults from "./shipped-defaults.json" with { type: "json" };
 
 function nowIso() {
   return new Date().toISOString();
@@ -11,7 +12,7 @@ export function createId(prefix = "rule") {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function defaultSettings() {
+export function baseSettings() {
   return {
     schemaVersion: SCHEMA_VERSION,
     enabled: true,
@@ -30,6 +31,34 @@ export function defaultSettings() {
       asciiArt: false,
     },
   };
+}
+
+function pickShippedPreset() {
+  const shipped = /** @type {Record<string, unknown>} */ (shippedDefaults);
+  const lengthRaw =
+    shipped.lengthFilter && typeof shipped.lengthFilter === "object"
+      ? /** @type {Record<string, unknown>} */ (shipped.lengthFilter)
+      : null;
+  return {
+    lengthFilter: lengthRaw
+      ? {
+          enabled: lengthRaw.enabled,
+          maxLength: lengthRaw.maxLength,
+        }
+      : undefined,
+    keywordRules: Array.isArray(shipped.keywordRules) ? shipped.keywordRules : [],
+  };
+}
+
+/** 新規インストール時（storage 空）の初期値。Store 同梱プリセットを含む。 */
+export function defaultSettings() {
+  const preset = pickShippedPreset();
+  const parsed = parseSettings({
+    ...baseSettings(),
+    ...(preset.lengthFilter ? { lengthFilter: preset.lengthFilter } : {}),
+    keywordRules: preset.keywordRules,
+  });
+  return parsed.ok ? parsed.settings : baseSettings();
 }
 
 function asBoolean(value, fallback) {
@@ -82,7 +111,7 @@ export function parseSettings(raw) {
       ? /** @type {Record<string, unknown>} */ (input.presets)
       : {};
 
-  const settings = defaultSettings();
+  const settings = baseSettings();
   settings.enabled = asBoolean(input.enabled, true);
   settings.debugMode = asBoolean(input.debugMode, false);
   settings.lengthFilter = {
