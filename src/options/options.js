@@ -9,13 +9,6 @@ const els = {
   maxLength: document.getElementById("maxLength"),
   keywordRows: document.getElementById("keyword-rows"),
   keywordError: document.getElementById("keyword-error"),
-  userRows: document.getElementById("user-rows"),
-  allowRows: document.getElementById("allow-rows"),
-  regexRows: document.getElementById("regex-rows"),
-  regexError: document.getElementById("regex-error"),
-  presetRepeat: document.getElementById("preset-repeat"),
-  presetUrl: document.getElementById("preset-url"),
-  presetAa: document.getElementById("preset-aa"),
   importError: document.getElementById("import-error"),
   styleEnabled: document.getElementById("style-enabled"),
   styleColor: document.getElementById("style-color"),
@@ -110,26 +103,6 @@ function removeFromList(listName, id) {
   });
 }
 
-function renderUserList(container, listName) {
-  container.replaceChildren();
-  for (const item of settings[listName]) {
-    const row = document.createElement("div");
-    row.className = "rule";
-    const enabled = document.createElement("input");
-    enabled.type = "checkbox";
-    enabled.checked = item.enabled;
-    enabled.addEventListener("change", () => toggleList(listName, item.id, enabled.checked));
-    const label = document.createElement("span");
-    label.textContent = item.userId;
-    const del = document.createElement("button");
-    del.type = "button";
-    del.textContent = "削除";
-    del.addEventListener("click", () => removeFromList(listName, item.id));
-    row.append(enabled, label, del);
-    container.appendChild(row);
-  }
-}
-
 function renderKeywords() {
   els.keywordRows.replaceChildren();
   for (const rule of settings.keywordRules) {
@@ -157,38 +130,11 @@ function renderKeywords() {
   }
 }
 
-function renderRegex() {
-  els.regexRows.replaceChildren();
-  for (const rule of settings.regexRules) {
-    const row = document.createElement("div");
-    row.className = "rule";
-    const enabled = document.createElement("input");
-    enabled.type = "checkbox";
-    enabled.checked = rule.enabled;
-    enabled.addEventListener("change", () =>
-      toggleList("regexRules", rule.id, enabled.checked),
-    );
-    const pattern = document.createElement("code");
-    pattern.textContent = rule.pattern;
-    const memo = document.createElement("span");
-    memo.textContent = rule.memo || "";
-    const del = document.createElement("button");
-    del.type = "button";
-    del.textContent = "削除";
-    del.addEventListener("click", () => removeFromList("regexRules", rule.id));
-    row.append(enabled, pattern, memo, del);
-    els.regexRows.appendChild(row);
-  }
-}
-
 function render() {
   els.enabled.checked = settings.enabled;
   els.debug.checked = settings.debugMode;
   els.lengthEnabled.checked = settings.lengthFilter.enabled;
   els.maxLength.value = String(settings.lengthFilter.maxLength);
-  els.presetRepeat.checked = settings.presets.repeatedCharacters;
-  els.presetUrl.checked = settings.presets.url;
-  els.presetAa.checked = settings.presets.asciiArt;
   const style = settings.styleFilter ?? defaultStyleFilter();
   els.styleEnabled.checked = style.enabled;
   const styleRule = primaryStyleRule();
@@ -196,9 +142,6 @@ function render() {
   els.styleRuleCombinator.value =
     styleRule.combinator === COMBINATORS.AND ? COMBINATORS.AND : COMBINATORS.OR;
   renderKeywords();
-  renderUserList(els.userRows, "blockedUsers");
-  renderUserList(els.allowRows, "allowedUsers");
-  renderRegex();
 }
 
 function addRuleForm(formId, handler) {
@@ -227,18 +170,6 @@ async function init() {
       lengthFilter: { ...settings.lengthFilter, maxLength },
     });
   });
-  els.presetRepeat.addEventListener("change", () =>
-    persist({
-      ...settings,
-      presets: { ...settings.presets, repeatedCharacters: els.presetRepeat.checked },
-    }),
-  );
-  els.presetUrl.addEventListener("change", () =>
-    persist({ ...settings, presets: { ...settings.presets, url: els.presetUrl.checked } }),
-  );
-  els.presetAa.addEventListener("change", () =>
-    persist({ ...settings, presets: { ...settings.presets, asciiArt: els.presetAa.checked } }),
-  );
 
   els.styleEnabled.addEventListener("change", () => persistStyleFromUi());
   els.styleRuleCombinator.addEventListener("change", () => persistStyleFromUi());
@@ -263,50 +194,6 @@ async function init() {
       keywordRules: [
         ...settings.keywordRules,
         { id: createId("kw"), enabled: true, value, matchMode, createdAt: new Date().toISOString() },
-      ],
-    });
-  });
-
-  addRuleForm("user-form", async () => {
-    const userId = document.getElementById("user-value").value.trim();
-    document.getElementById("user-value").value = "";
-    await persist({
-      ...settings,
-      blockedUsers: [
-        ...settings.blockedUsers,
-        { id: createId("user"), enabled: true, userId, createdAt: new Date().toISOString() },
-      ],
-    });
-  });
-
-  addRuleForm("allow-form", async () => {
-    const userId = document.getElementById("allow-value").value.trim();
-    document.getElementById("allow-value").value = "";
-    await persist({
-      ...settings,
-      allowedUsers: [
-        ...settings.allowedUsers,
-        { id: createId("allow"), enabled: true, userId, createdAt: new Date().toISOString() },
-      ],
-    });
-  });
-
-  addRuleForm("regex-form", async () => {
-    const pattern = document.getElementById("regex-value").value.trim();
-    const memo = document.getElementById("regex-memo").value.trim();
-    const result = validateRegexRule(pattern);
-    if (!result.ok) {
-      showError(els.regexError, result.error);
-      return;
-    }
-    showError(els.regexError, "");
-    document.getElementById("regex-value").value = "";
-    document.getElementById("regex-memo").value = "";
-    await persist({
-      ...settings,
-      regexRules: [
-        ...settings.regexRules,
-        { id: createId("re"), enabled: true, pattern, memo, createdAt: new Date().toISOString() },
       ],
     });
   });
