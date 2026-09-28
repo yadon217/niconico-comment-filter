@@ -19,7 +19,7 @@ export function findListScroller(section) {
  * @param {Element} target
  * @param {Map<string, string> | undefined} userIdByCommentId
  */
-export function commentFromListTarget(target, userIdByCommentId, userIdByBody) {
+export function commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex) {
   if (!(target instanceof Element)) return null;
   const section = findCommentListSection();
   if (!section || !section.contains(target)) return null;
@@ -29,7 +29,8 @@ export function commentFromListTarget(target, userIdByCommentId, userIdByBody) {
   if (!text || text === "コメントリスト") return null;
   const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
   const userId =
-    resolveUserIdForRow(row, userIdByCommentId, userIdByBody, commentText) || undefined;
+    resolveUserIdForRow(row, userIdByCommentId, userIdByBody, commentText, userIdByListIndex) ||
+    undefined;
   const commentId = commentIdFromRow(row) || undefined;
   const normKey = normalizeText(commentText);
   const bodySlot = userIdByBody?.get(normKey);
@@ -41,20 +42,29 @@ export function commentFromListTarget(target, userIdByCommentId, userIdByBody) {
         : normKey
           ? "miss"
           : "empty_key";
+  const rowListIndex = row.getAttribute("data-index") ?? "";
+  const listIndexLookup =
+    rowListIndex && userIdByListIndex?.has(rowListIndex)
+      ? "hit"
+      : rowListIndex
+        ? "miss"
+        : "empty";
   agentLog(
     "comment-adapter.js:commentFromListTarget",
     "resolve comment row",
     {
       lineCount: text.split("\n").filter(Boolean).length,
       commentTextLen: commentText.length,
-      rowDataIndex: row.getAttribute("data-index") ?? "",
+      rowDataIndex: rowListIndex,
       commentIdAttr: commentId ?? "",
       idMapSize: userIdByCommentId?.size ?? 0,
       bodyMapSize: userIdByBody?.size ?? 0,
+      listIndexMapSize: userIdByListIndex?.size ?? 0,
       bodyLookup,
+      listIndexLookup,
       resolvedUserId: Boolean(userId),
     },
-    "B",
+    "C",
   );
   return {
     text: commentText,

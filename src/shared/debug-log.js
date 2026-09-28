@@ -11,7 +11,7 @@ export function agentLog(location, message, data, hypothesisId) {
       data,
       hypothesisId,
       timestamp: Date.now(),
-      runId: "pre-fix",
+      runId: "post-fix",
     }),
   }).catch(() => {});
   // #endregion

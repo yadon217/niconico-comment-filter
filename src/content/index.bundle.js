@@ -70,6 +70,21 @@
       map.delete(oldest);
     }
   }
+  function mergeListIndexMap(map, entries, maxSize = 2e4) {
+    for (const { listIndex, userId } of entries) {
+      if (listIndex && userId) map.set(listIndex, userId);
+    }
+    while (map.size > maxSize) {
+      const oldest = map.keys().next().value;
+      if (oldest === void 0) break;
+      map.delete(oldest);
+    }
+  }
+  function listIndexFromRow(row) {
+    if (!row) return "";
+    const raw = row.getAttribute("data-index");
+    return raw == null ? "" : String(raw);
+  }
   function resolveUserIdFromBodyIndex(bodyMap, commentText) {
     if (!bodyMap || commentText == null) return "";
     const key = normalizeText(commentText);
@@ -78,12 +93,16 @@
     if (!userId || userId === BODY_USER_INDEX_AMBIGUOUS) return "";
     return userId;
   }
-  function resolveUserIdForRow(row, idMap, bodyMap, commentText) {
+  function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexMap) {
     const fromDom = domUserIdFromRow(row);
     if (fromDom) return fromDom;
     const commentId = commentIdFromRow(row);
     if (commentId && idMap?.has(commentId)) {
       return idMap.get(commentId) ?? "";
+    }
+    const listIndex = listIndexFromRow(row);
+    if (listIndex && listIndexMap?.has(listIndex)) {
+      return listIndexMap.get(listIndex) ?? "";
     }
     return resolveUserIdFromBodyIndex(bodyMap, commentText);
   }
@@ -108,7 +127,7 @@
         data,
         hypothesisId,
         timestamp: Date.now(),
-        runId: "pre-fix"
+        runId: "post-fix"
       })
     }).catch(() => {
     });
@@ -393,7 +412,7 @@
     );
     return heading?.closest("section") ?? null;
   }
-  function commentFromListTarget(target, userIdByCommentId2, userIdByBody2) {
+  function commentFromListTarget(target, userIdByCommentId2, userIdByBody2, userIdByListIndex2) {
     if (!(target instanceof Element)) return null;
     const section = findCommentListSection();
     if (!section || !section.contains(target)) return null;
@@ -402,25 +421,29 @@
     const text = (row.innerText || "").trim();
     if (!text || text === "\u30B3\u30E1\u30F3\u30C8\u30EA\u30B9\u30C8") return null;
     const commentText = text.split("\n").filter(Boolean).slice(-1)[0] ?? text;
-    const userId = resolveUserIdForRow(row, userIdByCommentId2, userIdByBody2, commentText) || void 0;
+    const userId = resolveUserIdForRow(row, userIdByCommentId2, userIdByBody2, commentText, userIdByListIndex2) || void 0;
     const commentId = commentIdFromRow(row) || void 0;
     const normKey = normalizeText(commentText);
     const bodySlot = userIdByBody2?.get(normKey);
     const bodyLookup = bodySlot === BODY_USER_INDEX_AMBIGUOUS ? "ambiguous" : bodySlot ? "hit" : normKey ? "miss" : "empty_key";
+    const rowListIndex = row.getAttribute("data-index") ?? "";
+    const listIndexLookup = rowListIndex && userIdByListIndex2?.has(rowListIndex) ? "hit" : rowListIndex ? "miss" : "empty";
     agentLog(
       "comment-adapter.js:commentFromListTarget",
       "resolve comment row",
       {
         lineCount: text.split("\n").filter(Boolean).length,
         commentTextLen: commentText.length,
-        rowDataIndex: row.getAttribute("data-index") ?? "",
+        rowDataIndex: rowListIndex,
         commentIdAttr: commentId ?? "",
         idMapSize: userIdByCommentId2?.size ?? 0,
         bodyMapSize: userIdByBody2?.size ?? 0,
+        listIndexMapSize: userIdByListIndex2?.size ?? 0,
         bodyLookup,
+        listIndexLookup,
         resolvedUserId: Boolean(userId)
       },
-      "B"
+      "C"
     );
     return {
       text: commentText,
@@ -552,6 +575,7 @@
   var adapterStatus = { hook: false, message: "" };
   var userIdByCommentId = /* @__PURE__ */ new Map();
   var userIdByBody = /* @__PURE__ */ new Map();
+  var userIdByListIndex = /* @__PURE__ */ new Map();
   function pushSettings() {
     postToPage(MESSAGE_TYPES.SETTINGS, { settings });
     renderDebug();
@@ -632,7 +656,7 @@
       onNgUser: ngUser,
       onNgWord: ngWord,
       resolveComment(target) {
-        return commentFromListTarget(target, userIdByCommentId, userIdByBody);
+        return commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex);
       }
     });
     subscribeSettings((next) => {
@@ -643,13 +667,15 @@
       if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
         mergeCommentIndex(userIdByCommentId, data.entries);
         mergeBodyUserIndex(userIdByBody, data.entries);
+        mergeListIndexMap(userIdByListIndex, data.entries);
         agentLog(
           "index.js:COMMENT_INDEX",
           "merged comment index",
           {
             entryCount: data.entries.length,
             idMapSize: userIdByCommentId.size,
-            bodyMapSize: userIdByBody.size
+            bodyMapSize: userIdByBody.size,
+            listIndexMapSize: userIdByListIndex.size
           },
           "A"
         );
@@ -677,6 +703,7 @@
       recentBlocked = [];
       userIdByCommentId.clear();
       userIdByBody.clear();
+      userIdByListIndex.clear();
       pushSettings();
       reportStats();
     });

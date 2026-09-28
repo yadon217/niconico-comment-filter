@@ -1,6 +1,6 @@
 import { normalizeText } from "./normalize.js";
 
-/** @typedef {{ commentId: string, userId: string, body: string }} CommentIndexEntry */
+/** @typedef {{ commentId: string, userId: string, body: string, listIndex: string }} CommentIndexEntry */
 
 export const BODY_USER_INDEX_AMBIGUOUS = "__ambiguous__";
 
@@ -12,9 +12,11 @@ export function collectCommentIndexEntries(payload) {
   const entries = [];
   const threads = payload?.data?.threads;
   if (!Array.isArray(threads)) return entries;
+  let listIndexCounter = 0;
   for (const thread of threads) {
     const comments = Array.isArray(thread.comments) ? thread.comments : [];
     for (const comment of comments) {
+      const listIndex = String(listIndexCounter++);
       if (comment?.id == null || comment?.userId == null) continue;
       const commentId = String(comment.id);
       const userId = String(comment.userId);
@@ -23,6 +25,7 @@ export function collectCommentIndexEntries(payload) {
         commentId,
         userId,
         body: comment?.body == null ? "" : String(comment.body),
+        listIndex,
       });
     }
   }
@@ -69,6 +72,26 @@ export function mergeBodyUserIndex(map, entries, maxSize = 20_000) {
   }
 }
 
+export function mergeListIndexMap(map, entries, maxSize = 20_000) {
+  for (const { listIndex, userId } of entries) {
+    if (listIndex && userId) map.set(listIndex, userId);
+  }
+  while (map.size > maxSize) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
+/**
+ * @param {Element | null | undefined} row
+ */
+export function listIndexFromRow(row) {
+  if (!row) return "";
+  const raw = row.getAttribute("data-index");
+  return raw == null ? "" : String(raw);
+}
+
 /**
  * @param {Map<string, string> | undefined} bodyMap
  * @param {string | undefined} commentText
@@ -87,13 +110,18 @@ export function resolveUserIdFromBodyIndex(bodyMap, commentText) {
  * @param {Map<string, string> | undefined} idMap commentId -> userId
  * @param {Map<string, string> | undefined} bodyMap normalized body -> userId
  * @param {string | undefined} commentText
+ * @param {Map<string, string> | undefined} listIndexMap data-index -> userId
  */
-export function resolveUserIdForRow(row, idMap, bodyMap, commentText) {
+export function resolveUserIdForRow(row, idMap, bodyMap, commentText, listIndexMap) {
   const fromDom = domUserIdFromRow(row);
   if (fromDom) return fromDom;
   const commentId = commentIdFromRow(row);
   if (commentId && idMap?.has(commentId)) {
     return idMap.get(commentId) ?? "";
+  }
+  const listIndex = listIndexFromRow(row);
+  if (listIndex && listIndexMap?.has(listIndex)) {
+    return listIndexMap.get(listIndex) ?? "";
   }
   return resolveUserIdFromBodyIndex(bodyMap, commentText);
 }

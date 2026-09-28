@@ -1,5 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
-import { mergeBodyUserIndex, mergeCommentIndex } from "../shared/comment-user-index.js";
+import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap } from "../shared/comment-user-index.js";
 import { agentLog } from "../shared/debug-log.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
@@ -20,6 +20,7 @@ let recentBlocked = [];
 let adapterStatus = { hook: false, message: "" };
 const userIdByCommentId = new Map();
 const userIdByBody = new Map();
+const userIdByListIndex = new Map();
 
 function pushSettings() {
   postToPage(MESSAGE_TYPES.SETTINGS, { settings });
@@ -109,7 +110,7 @@ async function boot() {
     onNgUser: ngUser,
     onNgWord: ngWord,
     resolveComment(target) {
-      return commentFromListTarget(target, userIdByCommentId, userIdByBody);
+      return commentFromListTarget(target, userIdByCommentId, userIdByBody, userIdByListIndex);
     },
   });
   subscribeSettings((next) => {
@@ -120,6 +121,7 @@ async function boot() {
     if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
       mergeCommentIndex(userIdByCommentId, data.entries);
       mergeBodyUserIndex(userIdByBody, data.entries);
+      mergeListIndexMap(userIdByListIndex, data.entries);
       agentLog(
         "index.js:COMMENT_INDEX",
         "merged comment index",
@@ -127,6 +129,7 @@ async function boot() {
           entryCount: data.entries.length,
           idMapSize: userIdByCommentId.size,
           bodyMapSize: userIdByBody.size,
+          listIndexMapSize: userIdByListIndex.size,
         },
         "A",
       );
@@ -154,6 +157,7 @@ async function boot() {
     recentBlocked = [];
     userIdByCommentId.clear();
     userIdByBody.clear();
+    userIdByListIndex.clear();
     pushSettings();
     reportStats();
   });

@@ -24,8 +24,8 @@ describe("comment-user-index", () => {
       },
     });
     expect(entries).toEqual([
-      { commentId: "c1", userId: "u1", body: "hello" },
-      { commentId: "3", userId: "u3", body: "c" },
+      { commentId: "c1", userId: "u1", body: "hello", listIndex: "0" },
+      { commentId: "3", userId: "u3", body: "c", listIndex: "2" },
     ]);
   });
 
@@ -34,8 +34,8 @@ describe("comment-user-index", () => {
     mergeCommentIndex(
       map,
       [
-        { commentId: "a", userId: "1", body: "a" },
-        { commentId: "b", userId: "2", body: "b" },
+        { commentId: "a", userId: "1", body: "a", listIndex: "0" },
+        { commentId: "b", userId: "2", body: "b", listIndex: "1" },
       ],
       2,
     );
@@ -50,7 +50,7 @@ describe("comment-user-index", () => {
         return null;
       },
     };
-    expect(resolveUserIdForRow(rowDom, new Map(), new Map())).toBe("dom-id");
+    expect(resolveUserIdForRow(rowDom, new Map(), new Map(), undefined, new Map())).toBe("dom-id");
 
     const rowIndex = {
       getAttribute(name) {
@@ -59,18 +59,31 @@ describe("comment-user-index", () => {
       },
     };
     const idMap = new Map([["cid-9", "from-api"]]);
-    expect(resolveUserIdForRow(rowIndex, idMap, new Map())).toBe("from-api");
+    expect(resolveUserIdForRow(rowIndex, idMap, new Map(), undefined, new Map())).toBe(
+      "from-api",
+    );
 
     const rowPlain = { getAttribute: () => null };
     const bodyMap = new Map([["hello", "user-body"]]);
-    expect(resolveUserIdForRow(rowPlain, new Map(), bodyMap, "hello")).toBe("user-body");
+    expect(resolveUserIdForRow(rowPlain, new Map(), bodyMap, "hello", new Map())).toBe(
+      "user-body",
+    );
+
+    const rowList = {
+      getAttribute(name) {
+        if (name === "data-index") return "2";
+        return null;
+      },
+    };
+    const listMap = new Map([["2", "user-at-2"]]);
+    expect(resolveUserIdForRow(rowList, new Map(), new Map(), "w", listMap)).toBe("user-at-2");
   });
 
   it("marks ambiguous body keys and refuses to resolve them", () => {
     const bodyMap = new Map();
     mergeBodyUserIndex(bodyMap, [
-      { commentId: "1", userId: "a", body: "same" },
-      { commentId: "2", userId: "b", body: "same" },
+      { commentId: "1", userId: "a", body: "same", listIndex: "0" },
+      { commentId: "2", userId: "b", body: "same", listIndex: "1" },
     ]);
     expect(bodyMap.get("same")).toBe(BODY_USER_INDEX_AMBIGUOUS);
     expect(resolveUserIdFromBodyIndex(bodyMap, "same")).toBe("");

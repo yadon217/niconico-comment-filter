@@ -49,9 +49,11 @@
     const entries = [];
     const threads = payload?.data?.threads;
     if (!Array.isArray(threads)) return entries;
+    let listIndexCounter = 0;
     for (const thread of threads) {
       const comments = Array.isArray(thread.comments) ? thread.comments : [];
       for (const comment of comments) {
+        const listIndex = String(listIndexCounter++);
         if (comment?.id == null || comment?.userId == null) continue;
         const commentId = String(comment.id);
         const userId = String(comment.userId);
@@ -59,7 +61,8 @@
         entries.push({
           commentId,
           userId,
-          body: comment?.body == null ? "" : String(comment.body)
+          body: comment?.body == null ? "" : String(comment.body),
+          listIndex
         });
       }
     }
@@ -78,7 +81,7 @@
         data,
         hypothesisId,
         timestamp: Date.now(),
-        runId: "pre-fix"
+        runId: "post-fix"
       })
     }).catch(() => {
     });
