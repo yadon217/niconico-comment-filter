@@ -42,9 +42,9 @@
     },
     {
       "matches": ["https://www.nicovideo.jp/watch/*"],
-      "js": ["src/content/inject-page-hook.js"],
+      "js": ["src/content/page-hook.bundle.js"],
       "run_at": "document_start",
-      "world": "ISOLATED"
+      "world": "MAIN"
     },
     {
       "matches": ["https://www.nicovideo.jp/watch/*"],

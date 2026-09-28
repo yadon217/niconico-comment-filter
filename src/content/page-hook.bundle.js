@@ -673,6 +673,33 @@
   var stats = emptyStats();
   var adapterStatus = { hook: true, message: "" };
   var loggedCommentShape = false;
+  var fetchInterceptSeq = 0;
+  agentLog(
+    "page-hook.js:boot",
+    "main hook installing",
+    { isTop: window === window.top, path: location.pathname },
+    "W"
+  );
+  function filteredJsonResponse(sourceResponse, nextPayload) {
+    const body = JSON.stringify(nextPayload);
+    const headers = new Headers();
+    headers.set("content-type", "application/json; charset=utf-8");
+    const cacheControl = sourceResponse.headers.get("cache-control");
+    if (cacheControl) headers.set("cache-control", cacheControl);
+    return new Response(body, {
+      status: sourceResponse.status,
+      statusText: sourceResponse.statusText,
+      headers
+    });
+  }
+  function isNvCommentHost(url) {
+    try {
+      const parsed = new URL(url, location.href);
+      return COMMENT_API_HOSTS.includes(parsed.host);
+    } catch {
+      return false;
+    }
+  }
   function firstCommentSample(payload) {
     const threads = payload?.data?.threads;
     if (!Array.isArray(threads)) return null;
@@ -786,6 +813,7 @@
           blockedUserRuleCount,
           engineEnabled: engine.enabled,
           payloadMatchCount: blockedId ? countNvCommentUserIdInPayload(payload, blockedId) : 0,
+          outputPayloadMatchCount: blockedId ? countNvCommentUserIdInPayload(next, blockedId) : 0,
           inputCommentCount,
           outputCommentCount
         },
@@ -830,15 +858,34 @@
   window.fetch = async function ncfFetch(input, init) {
     const response = await originalFetch(input, init);
     const url = typeof input === "string" ? input : input?.url;
+    if (isNvCommentHost(url)) {
+      fetchInterceptSeq += 1;
+      let path = "";
+      try {
+        path = new URL(url, location.href).pathname;
+      } catch {
+        path = String(url).slice(0, 80);
+      }
+      agentLog(
+        "page-hook.js:fetch",
+        "nvcomment host response",
+        {
+          seq: fetchInterceptSeq,
+          path,
+          matched: isCommentApi(url),
+          enabled: engine.enabled,
+          blockedUserRuleCount: (settings?.blockedUsers ?? []).filter(
+            (item) => item.enabled !== false && item.userId
+          ).length
+        },
+        "W"
+      );
+    }
     if (!isCommentApi(url) || !engine.enabled) return response;
     try {
       const payload = await response.clone().json();
       const next = applyFilteredPayload(payload, "fetch");
-      return new Response(JSON.stringify(next), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      });
+      return filteredJsonResponse(response, next);
     } catch (error) {
       adapterStatus = {
         hook: true,
