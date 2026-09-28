@@ -730,7 +730,13 @@
       agentLog(
         "page-hook.js:applyFilteredPayload",
         "post COMMENT_INDEX",
-        { entryCount: indexEntries.length, threads: threadSummary(payload) },
+        {
+          entryCount: indexEntries.length,
+          threads: threadSummary(payload),
+          blockedUserRuleCount: (settings?.blockedUsers ?? []).filter(
+            (item) => item.enabled !== false && item.userId
+          ).length
+        },
         "A"
       );
       postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });

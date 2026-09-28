@@ -642,6 +642,8 @@
       "F"
     );
     syncCommentListVisibility();
+    agentLog("index.js:ngUser", "reload watch tab for canvas filter", {}, "I");
+    location.reload();
     return true;
   }
   async function ngWord(value) {
