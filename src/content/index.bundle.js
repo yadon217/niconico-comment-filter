@@ -26,8 +26,7 @@
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
     COMMENT_INDEX: "ncf-comment-index",
-    CONTEXT_NG: "ncf-context-ng",
-    DEBUG_LOG: "ncf-debug-log"
+    CONTEXT_NG: "ncf-context-ng"
   });
   var SOURCE = "niconico-comment-filter";
   var COMMENT_API_HOSTS = Object.freeze([
@@ -159,38 +158,6 @@
   function commentIdFromRow(row) {
     if (!row) return "";
     return row.getAttribute("data-comment-id") || row.getAttribute("data-commentid") || row.getAttribute("data-id") || row.getAttribute("data-nvcomment-id") || "";
-  }
-
-  // src/shared/debug-log.js
-  function agentLog(location2, message, data, hypothesisId) {
-    const payload = {
-      sessionId: "690dc9",
-      location: location2,
-      message,
-      data,
-      hypothesisId,
-      timestamp: Date.now(),
-      runId: "post-fix"
-    };
-    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
-      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-      });
-      return;
-    }
-    if (typeof window !== "undefined" && typeof location2 !== "undefined") {
-      window.postMessage(
-        {
-          source: SOURCE,
-          type: MESSAGE_TYPES.DEBUG_LOG,
-          ...payload
-        },
-        location2.origin
-      );
-    }
   }
 
   // src/shared/shipped-defaults.json
@@ -491,28 +458,6 @@
       listIndexDescMap2
     ) || void 0;
     const commentId = commentIdFromRow(row) || void 0;
-    const normKey = normalizeText(commentText);
-    const bodySlot = userIdByBody2?.get(normKey);
-    const bodyLookup = bodySlot === BODY_USER_INDEX_AMBIGUOUS ? "ambiguous" : bodySlot ? "hit" : normKey ? "miss" : "empty_key";
-    const rowListIndex = row.getAttribute("data-index") ?? "";
-    const listIndexLookup = rowListIndex && userIdByListIndex2?.has(rowListIndex) ? "hit" : rowListIndex ? "miss" : "empty";
-    agentLog(
-      "comment-adapter.js:commentFromListTarget",
-      "resolve comment row",
-      {
-        lineCount: text.split("\n").filter(Boolean).length,
-        commentTextLen: commentText.length,
-        rowDataIndex: rowListIndex,
-        commentIdAttr: commentId ?? "",
-        idMapSize: userIdByCommentId2?.size ?? 0,
-        bodyMapSize: userIdByBody2?.size ?? 0,
-        listIndexMapSize: userIdByListIndex2?.size ?? 0,
-        bodyLookup,
-        listIndexLookup,
-        resolvedUserId: Boolean(userId)
-      },
-      "C"
-    );
     return {
       text: commentText,
       userId,
@@ -693,18 +638,7 @@
         { id: createId("user"), enabled: true, userId, createdAt: (/* @__PURE__ */ new Date()).toISOString() }
       ]
     });
-    agentLog(
-      "index.js:ngUser",
-      "blocked user added",
-      {
-        userIdLen: userId.length,
-        ruleCount: settings.blockedUsers.length + 1,
-        indexOccurrences: [...userIdByCommentId.values()].filter((id) => id === userId).length
-      },
-      "F"
-    );
     syncCommentListVisibility();
-    agentLog("index.js:ngUser", "reload watch tab for canvas filter", {}, "I");
     location.reload();
     return true;
   }
@@ -746,8 +680,6 @@
       });
       return;
     }
-    let hidden = 0;
-    let resolved = 0;
     for (const row of section.querySelectorAll("[data-index]")) {
       if (!(row instanceof Element)) continue;
       const text = (row.innerText || "").trim();
@@ -761,17 +693,9 @@
         listIndexAscMap,
         listIndexDescMap
       );
-      if (userId) resolved += 1;
       const shouldHide = Boolean(userId && blocked.has(userId));
       row.classList.toggle("ncf-row-hidden", shouldHide);
-      if (shouldHide) hidden += 1;
     }
-    agentLog(
-      "index.js:syncCommentListVisibility",
-      "list rows hidden for blocked users",
-      { hidden, resolved, blockedRuleCount: blocked.size },
-      "G"
-    );
   }
   async function boot() {
     if (!isWatchPage()) return;
@@ -796,15 +720,6 @@
       pushSettings();
     });
     onPageMessage((data) => {
-      if (data.type === MESSAGE_TYPES.DEBUG_LOG) {
-        agentLog(
-          String(data.location ?? ""),
-          String(data.message ?? ""),
-          data.data && typeof data.data === "object" ? data.data : {},
-          String(data.hypothesisId ?? "")
-        );
-        return;
-      }
       if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
         mergeCommentIndex(userIdByCommentId, data.entries);
         mergeBodyUserIndex(userIdByBody, data.entries);
@@ -812,17 +727,6 @@
         const bodyMaps = buildListIndexBodyMaps(data.entries);
         listIndexAscMap = bodyMaps.asc;
         listIndexDescMap = bodyMaps.desc;
-        agentLog(
-          "index.js:COMMENT_INDEX",
-          "merged comment index",
-          {
-            entryCount: data.entries.length,
-            idMapSize: userIdByCommentId.size,
-            bodyMapSize: userIdByBody.size,
-            listIndexMapSize: userIdByListIndex.size
-          },
-          "A"
-        );
         syncCommentListVisibility();
       }
       if (data.type === MESSAGE_TYPES.STATS && data.stats) {

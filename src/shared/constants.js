@@ -29,7 +29,6 @@ export const MESSAGE_TYPES = Object.freeze({
   BLOCKED: "ncf-blocked",
   COMMENT_INDEX: "ncf-comment-index",
   CONTEXT_NG: "ncf-context-ng",
-  DEBUG_LOG: "ncf-debug-log",
 });
 
 export const SOURCE = "niconico-comment-filter";

@@ -26,8 +26,7 @@
     STATUS: "ncf-status",
     BLOCKED: "ncf-blocked",
     COMMENT_INDEX: "ncf-comment-index",
-    CONTEXT_NG: "ncf-context-ng",
-    DEBUG_LOG: "ncf-debug-log"
+    CONTEXT_NG: "ncf-context-ng"
   });
   var SOURCE = "niconico-comment-filter";
   var COMMENT_API_HOSTS = Object.freeze([
@@ -73,19 +72,6 @@
     }
     return "";
   }
-  function countNvCommentUserIdInPayload(payload, targetUserId) {
-    if (!targetUserId) return 0;
-    const threads = payload?.data?.threads;
-    if (!Array.isArray(threads)) return 0;
-    let count = 0;
-    for (const thread of threads) {
-      const comments = Array.isArray(thread?.comments) ? thread.comments : [];
-      for (const comment of comments) {
-        if (nvCommentUserId(comment) === targetUserId) count += 1;
-      }
-    }
-    return count;
-  }
 
   // src/shared/comment-user-index.js
   function pickListThread(threads) {
@@ -130,38 +116,6 @@
       }
     }
     return entries;
-  }
-
-  // src/shared/debug-log.js
-  function agentLog(location2, message, data, hypothesisId) {
-    const payload = {
-      sessionId: "690dc9",
-      location: location2,
-      message,
-      data,
-      hypothesisId,
-      timestamp: Date.now(),
-      runId: "post-fix"
-    };
-    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
-      fetch("http://127.0.0.1:7511/ingest/c1735e42-463a-47c3-97f8-cc00f725b849", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "690dc9" },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-      });
-      return;
-    }
-    if (typeof window !== "undefined" && typeof location2 !== "undefined") {
-      window.postMessage(
-        {
-          source: SOURCE,
-          type: MESSAGE_TYPES.DEBUG_LOG,
-          ...payload
-        },
-        location2.origin
-      );
-    }
   }
 
   // src/shared/comment-style.js
@@ -687,14 +641,6 @@
   var engine = createFilterEngine(settings);
   var stats = emptyStats();
   var adapterStatus = { hook: true, message: "" };
-  var loggedCommentShape = false;
-  var fetchInterceptSeq = 0;
-  agentLog(
-    "page-hook.js:boot",
-    "main hook installing",
-    { isTop: window === window.top, path: location.pathname },
-    "W"
-  );
   function filteredJsonResponse(sourceResponse, nextPayload) {
     const body = JSON.stringify(nextPayload);
     const headers = new Headers();
@@ -706,32 +652,6 @@
       statusText: sourceResponse.statusText,
       headers
     });
-  }
-  function isNvCommentHost(url) {
-    try {
-      const parsed = new URL(url, location.href);
-      return COMMENT_API_HOSTS.includes(parsed.host);
-    } catch {
-      return false;
-    }
-  }
-  function firstCommentSample(payload) {
-    const threads = payload?.data?.threads;
-    if (!Array.isArray(threads)) return null;
-    for (const thread of threads) {
-      const comments = Array.isArray(thread?.comments) ? thread.comments : [];
-      if (comments[0]) return comments[0];
-    }
-    return null;
-  }
-  function threadSummary(payload) {
-    const threads = payload?.data?.threads;
-    if (!Array.isArray(threads)) return [];
-    return threads.map((thread, index) => ({
-      index,
-      commentCount: Array.isArray(thread?.comments) ? thread.comments.length : 0,
-      threadId: thread?.id != null ? String(thread.id) : ""
-    }));
   }
   function isCommentApi(url) {
     try {
@@ -751,16 +671,8 @@
       location.origin
     );
   }
-  function countPayloadComments(payload) {
-    const threads = payload?.data?.threads;
-    if (!Array.isArray(threads)) return 0;
-    return threads.reduce(
-      (sum, thread) => sum + (Array.isArray(thread?.comments) ? thread.comments.length : 0),
-      0
-    );
-  }
   function patchXhrJsonResponse(xhr, payload) {
-    const next = applyFilteredPayload(payload, "xhr");
+    const next = applyFilteredPayload(payload);
     const filtered = JSON.stringify(next);
     Object.defineProperty(xhr, "responseText", {
       configurable: true,
@@ -775,66 +687,12 @@
       }
     });
   }
-  function applyFilteredPayload(payload, transport = "unknown") {
-    if (!loggedCommentShape) {
-      const first = firstCommentSample(payload);
-      if (first && typeof first === "object") {
-        loggedCommentShape = true;
-        agentLog(
-          "page-hook.js:applyFilteredPayload",
-          "sample comment keys",
-          {
-            keys: Object.keys(first),
-            nvUserIdLen: nvCommentUserId(first).length
-          },
-          "H"
-        );
-      }
-    }
+  function applyFilteredPayload(payload) {
     const indexEntries = collectCommentIndexEntries(payload);
     if (indexEntries.length) {
-      agentLog(
-        "page-hook.js:applyFilteredPayload",
-        "post COMMENT_INDEX",
-        {
-          entryCount: indexEntries.length,
-          threads: threadSummary(payload),
-          blockedUserRuleCount: (settings?.blockedUsers ?? []).filter(
-            (item) => item.enabled !== false && item.userId
-          ).length
-        },
-        "A"
-      );
       postToIsolated(MESSAGE_TYPES.COMMENT_INDEX, { entries: indexEntries });
     }
-    const inputCommentCount = countPayloadComments(payload);
     const { payload: next, blocked: blocked2 } = filterNvCommentPayload(payload, engine);
-    const outputCommentCount = countPayloadComments(next);
-    const blockedUserRuleCount = (settings?.blockedUsers ?? []).filter(
-      (item) => item.enabled !== false && item.userId
-    ).length;
-    if (blockedUserRuleCount > 0) {
-      const userBlocks = blocked2.filter((item) => item.result.reason === REASONS.USER).length;
-      const blockedId = (settings.blockedUsers ?? []).find(
-        (item) => item.enabled !== false && item.userId
-      )?.userId;
-      agentLog(
-        "page-hook.js:applyFilteredPayload",
-        "user filter stats",
-        {
-          transport,
-          userBlocks,
-          totalBlocked: blocked2.length,
-          blockedUserRuleCount,
-          engineEnabled: engine.enabled,
-          payloadMatchCount: blockedId ? countNvCommentUserIdInPayload(payload, blockedId) : 0,
-          outputPayloadMatchCount: blockedId ? countNvCommentUserIdInPayload(next, blockedId) : 0,
-          inputCommentCount,
-          outputCommentCount
-        },
-        "F"
-      );
-    }
     for (const item of blocked2) {
       addStat(stats, item.result.reason);
     }
@@ -854,17 +712,6 @@
       settings = data.settings;
       engine = createFilterEngine(settings);
       stats = emptyStats();
-      agentLog(
-        "page-hook.js:SETTINGS",
-        "engine rebuilt",
-        {
-          enabled: settings.enabled,
-          blockedUserRuleCount: (settings.blockedUsers ?? []).filter(
-            (item) => item.enabled !== false && item.userId
-          ).length
-        },
-        "F"
-      );
       postToIsolated(MESSAGE_TYPES.STATS, { stats });
       postToIsolated(MESSAGE_TYPES.STATUS, { status: adapterStatus });
     }
@@ -873,33 +720,10 @@
   window.fetch = async function ncfFetch(input, init) {
     const response = await originalFetch(input, init);
     const url = typeof input === "string" ? input : input?.url;
-    if (isNvCommentHost(url)) {
-      fetchInterceptSeq += 1;
-      let path = "";
-      try {
-        path = new URL(url, location.href).pathname;
-      } catch {
-        path = String(url).slice(0, 80);
-      }
-      agentLog(
-        "page-hook.js:fetch",
-        "nvcomment host response",
-        {
-          seq: fetchInterceptSeq,
-          path,
-          matched: isCommentApi(url),
-          enabled: engine.enabled,
-          blockedUserRuleCount: (settings?.blockedUsers ?? []).filter(
-            (item) => item.enabled !== false && item.userId
-          ).length
-        },
-        "W"
-      );
-    }
     if (!isCommentApi(url) || !engine.enabled) return response;
     try {
       const payload = await response.clone().json();
-      const next = applyFilteredPayload(payload, "fetch");
+      const next = applyFilteredPayload(payload);
       return filteredJsonResponse(response, next);
     } catch (error) {
       adapterStatus = {
@@ -926,12 +750,6 @@
             xhr.__ncfResponsePatched = true;
             const payload = JSON.parse(xhr.responseText);
             patchXhrJsonResponse(xhr, payload);
-            agentLog(
-              "page-hook.js:xhr",
-              "patched response at readystatechange capture",
-              { commentCountBefore: countPayloadComments(payload) },
-              "J"
-            );
           } catch {
           }
         },

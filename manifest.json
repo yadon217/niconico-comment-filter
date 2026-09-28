@@ -30,8 +30,7 @@
   "host_permissions": [
     "https://www.nicovideo.jp/*",
     "https://nvcomment.nicovideo.jp/*",
-    "https://public.nvcomment.nicovideo.jp/*",
-    "http://127.0.0.1:7511/*"
+    "https://public.nvcomment.nicovideo.jp/*"
   ],
   "content_scripts": [
     {

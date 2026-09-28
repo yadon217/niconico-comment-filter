@@ -1,7 +1,5 @@
 import { MESSAGE_TYPES } from "../shared/constants.js";
 import { mergeBodyUserIndex, mergeCommentIndex, mergeListIndexMap, buildListIndexBodyMaps, resolveUserIdForRow } from "../shared/comment-user-index.js";
-import { countNvCommentUserIdInPayload } from "../shared/nvcomment-user.js";
-import { agentLog } from "../shared/debug-log.js";
 import { reasonLabel } from "../shared/filter-engine.js";
 import { createId, parseSettings } from "../shared/schema.js";
 import { loadSettings, saveSettings, subscribeSettings } from "../shared/storage.js";
@@ -79,18 +77,7 @@ async function ngUser(userId) {
       { id: createId("user"), enabled: true, userId, createdAt: new Date().toISOString() },
     ],
   });
-  agentLog(
-    "index.js:ngUser",
-    "blocked user added",
-    {
-      userIdLen: userId.length,
-      ruleCount: settings.blockedUsers.length + 1,
-      indexOccurrences: [...userIdByCommentId.values()].filter((id) => id === userId).length,
-    },
-    "F",
-  );
   syncCommentListVisibility();
-  agentLog("index.js:ngUser", "reload watch tab for canvas filter", {}, "I");
   location.reload();
   return true;
 }
@@ -138,8 +125,6 @@ function syncCommentListVisibility() {
     });
     return;
   }
-  let hidden = 0;
-  let resolved = 0;
   for (const row of section.querySelectorAll("[data-index]")) {
     if (!(row instanceof Element)) continue;
     const text = (row.innerText || "").trim();
@@ -153,17 +138,9 @@ function syncCommentListVisibility() {
       listIndexAscMap,
       listIndexDescMap,
     );
-    if (userId) resolved += 1;
     const shouldHide = Boolean(userId && blocked.has(userId));
     row.classList.toggle("ncf-row-hidden", shouldHide);
-    if (shouldHide) hidden += 1;
   }
-  agentLog(
-    "index.js:syncCommentListVisibility",
-    "list rows hidden for blocked users",
-    { hidden, resolved, blockedRuleCount: blocked.size },
-    "G",
-  );
 }
 
 async function boot() {
@@ -189,15 +166,6 @@ async function boot() {
     pushSettings();
   });
   onPageMessage((data) => {
-    if (data.type === MESSAGE_TYPES.DEBUG_LOG) {
-      agentLog(
-        String(data.location ?? ""),
-        String(data.message ?? ""),
-        data.data && typeof data.data === "object" ? data.data : {},
-        String(data.hypothesisId ?? ""),
-      );
-      return;
-    }
     if (data.type === MESSAGE_TYPES.COMMENT_INDEX && Array.isArray(data.entries)) {
       mergeCommentIndex(userIdByCommentId, data.entries);
       mergeBodyUserIndex(userIdByBody, data.entries);
@@ -205,17 +173,6 @@ async function boot() {
       const bodyMaps = buildListIndexBodyMaps(data.entries);
       listIndexAscMap = bodyMaps.asc;
       listIndexDescMap = bodyMaps.desc;
-      agentLog(
-        "index.js:COMMENT_INDEX",
-        "merged comment index",
-        {
-          entryCount: data.entries.length,
-          idMapSize: userIdByCommentId.size,
-          bodyMapSize: userIdByBody.size,
-          listIndexMapSize: userIdByListIndex.size,
-        },
-        "A",
-      );
       syncCommentListVisibility();
     }
     if (data.type === MESSAGE_TYPES.STATS && data.stats) {

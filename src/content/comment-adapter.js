@@ -1,6 +1,4 @@
-import { resolveUserIdForRow, commentIdFromRow, BODY_USER_INDEX_AMBIGUOUS } from "../shared/comment-user-index.js";
-import { agentLog } from "../shared/debug-log.js";
-import { normalizeText } from "../shared/normalize.js";
+import { resolveUserIdForRow, commentIdFromRow } from "../shared/comment-user-index.js";
 import { MESSAGE_TYPES, SOURCE } from "../shared/constants.js";
 
 export function findCommentListSection() {
@@ -46,40 +44,6 @@ export function commentFromListTarget(
       listIndexDescMap,
     ) || undefined;
   const commentId = commentIdFromRow(row) || undefined;
-  const normKey = normalizeText(commentText);
-  const bodySlot = userIdByBody?.get(normKey);
-  const bodyLookup =
-    bodySlot === BODY_USER_INDEX_AMBIGUOUS
-      ? "ambiguous"
-      : bodySlot
-        ? "hit"
-        : normKey
-          ? "miss"
-          : "empty_key";
-  const rowListIndex = row.getAttribute("data-index") ?? "";
-  const listIndexLookup =
-    rowListIndex && userIdByListIndex?.has(rowListIndex)
-      ? "hit"
-      : rowListIndex
-        ? "miss"
-        : "empty";
-  agentLog(
-    "comment-adapter.js:commentFromListTarget",
-    "resolve comment row",
-    {
-      lineCount: text.split("\n").filter(Boolean).length,
-      commentTextLen: commentText.length,
-      rowDataIndex: rowListIndex,
-      commentIdAttr: commentId ?? "",
-      idMapSize: userIdByCommentId?.size ?? 0,
-      bodyMapSize: userIdByBody?.size ?? 0,
-      listIndexMapSize: userIdByListIndex?.size ?? 0,
-      bodyLookup,
-      listIndexLookup,
-      resolvedUserId: Boolean(userId),
-    },
-    "C",
-  );
   return {
     text: commentText,
     userId,
